@@ -89,4 +89,7 @@ def test_repairs_modify_timeline() -> None:
     tl = EditTimeline(source_path="x", source_width=1920, source_height=1080, ranges=[SourceRange(start=0, end=10)])
     fixed, notes = apply_repairs(tl, ["shrink_captions", "lower_gain"])
     assert fixed.captions.max_words == 2 and fixed.captions.overrides["font_scale"] < 1
-    assert fixed.audio.gain_db == -2.0 and notes and tl.audio.gain_db == 0.0  # original untouched
+    assert fixed.audio.true_peak == -3.5 and fixed.audio.target_lufs == -15.0 and notes
+    assert tl.audio.true_peak == -1.5  # original untouched
+    again, _ = apply_repairs(fixed, ["lower_gain"])
+    assert again.audio.true_peak == -5.5  # progressive, so repeated attempts make progress

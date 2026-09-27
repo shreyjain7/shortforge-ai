@@ -54,6 +54,8 @@ SPONSOR_PHRASES = (
     "sponsor", "sponsored", "brought to you by", "use code", "promo code", "discount code", "link in the description",
     "link below", "check out", "sign up", "free trial", "percent off", "% off", "first month", "today's video is",
     "thanks to", "partnered with", "affiliate", "patreon", "merch", "subscribe", "hit the bell", "like and subscribe",
+    "follow us", "follow me", "on instagram", "on tiktok", "on twitter", "our gear", "our store", "our website",
+    "our clothing", "link in bio", "our channel", "check us out", "buy our",
 )
 OUTRO_PHRASES = ("thanks for watching", "thank you for watching", "see you next", "see you in the next",
                  "that's it for", "that's all for", "until next time", "peace out", "catch you")

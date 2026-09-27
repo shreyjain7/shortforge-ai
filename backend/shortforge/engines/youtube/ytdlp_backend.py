@@ -131,13 +131,15 @@ def video_from_info(info: dict[str, Any]) -> VideoMeta:
 def _map_error(exc: Exception, what: str) -> Exception:
     text = str(exc)
     lowered = text.lower()
+    # Check "does not exist" before transient signatures: a 404 also says "unable to download api page".
+    if "404" in lowered or "does not exist" in lowered or "requested entity was not found" in lowered:
+        return SourceResolutionError(
+            f"YouTube says this {what.split()[-1]} does not exist. Check the @handle or URL.", detail=text)
     if any(k in lowered for k in ("timed out", "temporary failure", "connection", "http error 5", "429",
                                   "unable to download api page")):
         return RetryableError(f"Network problem while {what}. Will retry.", detail=text)
     if "private video" in lowered:
         return SourceResolutionError("This video is private.", detail=text)
-    if "does not exist" in lowered or "404" in lowered:
-        return SourceResolutionError(f"YouTube says this {what.split()[-1]} does not exist.", detail=text)
     if "sign in to confirm" in lowered:
         return RetryableError(
             "YouTube asked to confirm you're not a bot. Configure 'cookies from browser' in Settings -> YouTube.",

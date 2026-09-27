@@ -199,7 +199,7 @@ def run_qc(output: Path, timeline: EditTimeline, pages: list[Page] | None, *,
     if per_min > 12:
         issues.append(Issue("punch_ins", "WARNING", f"{per_min:.0f} punch-ins per minute feels over-edited.",
                             "reduce_zooms"))
-    if speech_out:
+    if speech_out and timeline.captions.words:
         gaps = [b - a for a, b in zip([0.0] + [e for _, e in speech_out], [s for s, _ in speech_out] + [timeline.duration], strict=False)]
         longest = max(gaps) if gaps else 0.0
         metrics["longest_silence"] = round(longest, 2)
@@ -276,9 +276,11 @@ def apply_repairs(timeline: EditTimeline, repairs: list[str]) -> tuple[EditTimel
             tl.captions.overrides["font_scale"] = round(scale, 3)
             notes.append("recomputed caption line breaks with smaller pages/font")
         elif r == "lower_gain":
-            tl.audio.gain_db -= 2.0
-            tl.audio.true_peak = min(tl.audio.true_peak, -2.0)
-            notes.append("lowered gain by 2 dB and tightened the true-peak ceiling")
+            # Loudnorm re-normalises gain, so tighten the ceiling (limiter) and loudness progressively.
+            tl.audio.true_peak = round(min(tl.audio.true_peak, -1.0) - 2.0, 2)
+            tl.audio.target_lufs = round(tl.audio.target_lufs - 1.0, 2)
+            notes.append(f"tightened the peak ceiling to {tl.audio.true_peak} dBTP and loudness to "
+                         f"{tl.audio.target_lufs} LUFS")
         elif r == "reduce_zooms":
             tl.zooms = tl.zooms[::2]
             notes.append("halved the number of punch-ins")

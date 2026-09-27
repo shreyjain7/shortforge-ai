@@ -11,6 +11,7 @@ PASS 8  final ranking
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +23,7 @@ from shortforge.core.errors import JobCancelled, ShortForgeError
 from shortforge.core.logging import get_logger
 from shortforge.engines.audio.analysis import AudioFeatures
 from shortforge.engines.clip_detection import llm_ranker
+from shortforge.engines.clip_detection.action import generate_action_candidates, speech_ratio
 from shortforge.engines.clip_detection.boundaries import BoundaryConfig, apply_llm_adjustments, refine
 from shortforge.engines.clip_detection.candidates import (
     Candidate,
@@ -103,15 +105,19 @@ def _blend(heur: dict[str, float], llm: dict[str, Any] | None, visual_interest: 
 def find_clips(inp: FinderInputs, cfg: FinderConfig, *, llm: LLMProvider | None = None,
                face_detector: FaceDetector | None = None, progress: ProgressFn | None = None,
                cancel: CancelToken | None = None,
-               embed: Callable[[list[str]], list[list[float]] | None] | None = None) -> FinderResult:
+               embed: Callable[[list[str]], list[list[float]] | None] | None = None,
+               captioner: Callable[[bytes], str | None] | None = None) -> FinderResult:
     def report(p: float, msg: str) -> None:
         if progress:
             progress(p, msg)
         if cancel:
             cancel.raise_if_cancelled()
 
-    if len(inp.sentences) < 2 or inp.duration < cfg.min_duration:
-        raise ShortForgeError("This video is too short or has too little speech to find clips.")
+    if inp.duration < cfg.min_duration:
+        raise ShortForgeError("This video is shorter than the minimum clip length.")
+    if len(inp.sentences) < 3 or speech_ratio(inp.audio, inp.duration) < ACTION_SPEECH_THRESHOLD:
+        return find_action_clips(inp, cfg, llm=llm, face_detector=face_detector, progress=progress, cancel=cancel,
+                                 captioner=captioner)
 
     passes: dict[str, Any] = {}
     feats: list[SentenceFeatures] = sentence_features(inp.sentences, inp.words)
@@ -267,3 +273,97 @@ def find_clips(inp: FinderInputs, cfg: FinderConfig, *, llm: LLMProvider | None 
     passes["pass8"] = {"final": len(final)}
     report(1.0, f"Found {len(final)} candidate clips")
     return FinderResult(final, len(all_cands), llm_used, vision_backend, passes)
+
+
+# ============================================================================ low-speech (action) mode
+ACTION_SPEECH_THRESHOLD = 0.3
+
+TITLE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"title": {"type": "string"}, "keywords": {"type": "array", "items": {"type": "string"}},
+                   "category": {"type": "string"}},
+    "required": ["title", "keywords", "category"],
+}
+
+
+def _frame_jpeg(video: Path, t: float) -> bytes | None:
+    import subprocess
+
+    from shortforge.engines.media import ffmpeg as ff
+
+    cmd = [ff.ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, t):.2f}", "-i", str(video),
+           "-frames:v", "1", "-vf", "scale=672:-2", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=60, creationflags=ff.CREATE_NO_WINDOW).stdout or None
+    except Exception:
+        return None
+
+
+def find_action_clips(inp: FinderInputs, cfg: FinderConfig, *, llm: LLMProvider | None,
+                      face_detector: FaceDetector | None, progress: ProgressFn | None, cancel: CancelToken | None,
+                      captioner: Callable[[bytes], str | None] | None) -> FinderResult:
+    """Wordless footage: rank scene-aligned windows by motion, sound and rhythm; describe them visually."""
+    def report(p: float, msg: str) -> None:
+        if progress:
+            progress(p, msg)
+        if cancel:
+            cancel.raise_if_cancelled()
+
+    report(0.05, "Low speech detected - action mode: scoring motion, sound and editing rhythm")
+    gen_cfg = GenerationConfig(cfg.min_duration, min(cfg.max_duration, 45.0), cfg.target_duration)
+    cands = generate_action_candidates(inp.duration, inp.cuts, inp.activity, inp.audio, inp.words, gen_cfg,
+                                       inp.timeline)
+    if not cands:
+        raise ShortForgeError("No usable segments were found in this video.")
+    shortlist = select_diverse(cands, top_k=cfg.final_count, max_overlap=0.3)
+    passes: dict[str, Any] = {"mode": "action", "pass3": {"generated": len(cands), "shortlisted": len(shortlist)}}
+    video = inp.proxy_path if inp.proxy_path and inp.proxy_path.exists() else None
+    top = shortlist[: min(len(shortlist), cfg.vision_candidates)]
+    described = 0
+    for i, c in enumerate(top):
+        report(0.2 + 0.7 * i / max(1, len(top)), f"Describing clip {i + 1}/{len(top)} visually")
+        descriptions: list[str] = []
+        if captioner is not None and video is not None:
+            for frac in (0.3, 0.7):
+                jpeg = _frame_jpeg(video, c.start + (c.end - c.start) * frac)
+                text = captioner(jpeg) if jpeg else None
+                if text:
+                    descriptions.append(text.strip())
+        c.vision = {"descriptions": descriptions}
+        if descriptions:
+            described += 1
+            c.llm = {"title": None, "hook_text": None, "keywords": [], "hook_type": "none", "category": "other",
+                     "reason": " / ".join(descriptions)}
+            if llm is not None:
+                try:
+                    data = llm.chat_json(
+                        "You write short, accurate YouTube Shorts titles for wordless action footage. Use only what "
+                        "the frame descriptions and the original video title support. No clickbait lies.",
+                        f"Original video: {json.dumps(inp.video_title)}\nFrame descriptions: {json.dumps(descriptions)}\n"
+                        "Return JSON: title (under 60 characters), up to 5 keywords, category (one word).",
+                        schema=TITLE_SCHEMA, max_tokens=200)
+                    grounding = " ".join(descriptions) + " " + inp.video_title
+                    c.llm["title"] = llm_ranker.sanitize_title(str(data.get("title", "")), grounding) or None
+                    c.llm["keywords"] = [str(k) for k in data.get("keywords", [])][:5]
+                    c.llm["category"] = str(data.get("category", "other"))[:20]
+                    c.llm["model"] = llm.model
+                except Exception as exc:
+                    log.info("action title generation failed: %s", exc)
+    for c in shortlist:
+        c.pass_reached = 8
+    passes["pass5"] = {"described": described, "vision_model": captioner is not None}
+    report(0.95, "PASS 7 - duplicate filtering")
+    kept: list[Candidate] = []
+    accepted = list(inp.existing)
+    for idx, c in enumerate(sorted(shortlist, key=lambda x: x.final, reverse=True)):
+        match = find_duplicate(inp.video_id, c.start, c.end, c.text, accepted, cfg.duplicate_threshold)
+        if match:
+            c.duplicate_of = int(match.key.split(":")[1]) if match.key.startswith(("short:", "candidate:")) else None
+            c.similarity = match.similarity
+            c.final = max(0.0, c.final - 25.0)
+        else:
+            accepted.append(ExistingClip(f"new:{idx}", inp.video_id, c.start, c.end, c.text))
+        kept.append(c)
+    kept.sort(key=lambda c: (c.duplicate_of is None, c.final), reverse=True)
+    report(1.0, f"Found {len(kept)} action clips")
+    return FinderResult(kept, len(cands), llm.model if llm else None, "motion+audio", passes)

@@ -69,7 +69,7 @@ def _middle_frame_jpeg(path: Path, duration: float) -> bytes | None:
     import subprocess
 
     cmd = [ff.ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-ss", f"{duration / 2:.2f}", "-i", str(path),
-           "-frames:v", "1", "-vf", "scale=448:-2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]
+           "-frames:v", "1", "-vf", "scale=672:-2", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]
     try:
         out = subprocess.run(cmd, capture_output=True, timeout=60, creationflags=ff.CREATE_NO_WINDOW).stdout
         return out or None
@@ -92,15 +92,28 @@ def ollama_vision_captioner(base_url: str, installed: list[str]) -> VisionCaptio
         try:
             r = httpx.post(f"{base_url.rstrip('/')}/api/generate", timeout=120, json={
                 "model": model, "stream": False, "keep_alive": 0,
-                "prompt": "Describe this video frame in one short sentence listing the main objects and setting.",
-                "images": [base64.b64encode(jpeg).decode()], "options": {"temperature": 0.1, "num_predict": 60},
+                "prompt": "Describe this video frame in one short sentence: the main subject, the action and the setting.",
+                "images": [base64.b64encode(jpeg).decode()], "options": {"temperature": 0.1, "num_predict": 700},
                 **({"think": False} if model.startswith("qwen3") else {})})
-            return r.json().get("response", "").strip() or None
+            data = r.json()
+            text = (data.get("response") or "").strip()
+            if not text:
+                # Some reasoning VLMs ignore think=false and answer inside "thinking".
+                text = _summary_from_thinking(data.get("thinking") or "")
+            return text or None
         except Exception as exc:
             log.debug("vision caption failed: %s", exc)
             return None
 
     return caption
+
+
+def _summary_from_thinking(thinking: str) -> str:
+    text = re.sub(r"</?think>", "", thinking).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    skip = ("got it", "let's", "let me", "okay", "so ", "first,", "hmm", "wait")
+    useful = [s for s in sentences if not s.lower().startswith(skip)]
+    return " ".join(useful[:2])[:300]
 
 
 def index_library(folder: Path, cache_file: Path, captioner: VisionCaptioner | None = None) -> list[BrollClip]:

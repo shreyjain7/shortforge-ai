@@ -85,6 +85,7 @@ from shortforge.workers.queue import JobContext, job_handler
 
 log = get_logger("stages")
 
+BEST_AVAILABLE_FLOOR = 50.0
 PRIORITY = {"scan": 60, "download": 55, "prepare": 58, "transcribe": 62, "scenes": 57, "analyze": 64,
             "find": 66, "render": 70, "qc": 72, "metadata": 74, "upload": 80}
 
@@ -575,8 +576,15 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
         if llm is not None:
             mm.load(f"llm:{llm.model}", lambda: llm, vram_mb=5500, unload=lambda p: p.unload())
         try:
+            captioner = None
+            if settings.llm.provider == "ollama":
+                from shortforge.engines.editing.broll import ollama_vision_captioner
+                from shortforge.engines.llm.providers import OllamaProvider
+
+                captioner = ollama_vision_captioner(settings.llm.ollama_url,
+                                                    OllamaProvider("", settings.llm.ollama_url).list_models())
             result = find_clips(inputs, cfg, llm=llm, face_detector=app.face_detector(), progress=ctx.sub(0, 0.95),
-                                cancel=ctx.cancel, embed=embed if llm else None)
+                                cancel=ctx.cancel, embed=embed if llm else None, captioner=captioner)
         finally:
             if llm is not None and settings.llm.unload_after_use:
                 mm.unload(f"llm:{llm.model}")
@@ -595,7 +603,8 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
             detections = vision.pop("detections", [])
             row = CandidateClip(
                 video_id=ctx.video_id, start=c.start, end=c.end, duration=round(c.end - c.start, 3),
-                first_word_idx=c.first_word, last_word_idx=c.last_word, text=c.text,
+                first_word_idx=c.first_word if c.first_word >= 0 else None,
+                last_word_idx=c.last_word if c.last_word >= 0 else None, text=c.text,
                 title=llm_data.get("title") or None, hook_text=llm_data.get("hook_text"),
                 reasoning=llm_data.get("reason") or "; ".join(c.notes) or None,
                 labels={"hook_type": llm_data.get("hook_type"), "category": llm_data.get("category"),
@@ -603,7 +612,7 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
                 keywords=llm_data.get("keywords") or [], analysis={"vision": vision, "notes": c.notes},
                 heuristic_score=c.heuristic, llm_score=round(sum(llm_data.get(m, 0) for m in
                                                                 ("hook", "standalone", "payoff", "story_completeness"))
-                                                            / 4, 2) if c.llm else None,
+                                                            / 4, 2) if c.llm and "hook" in c.llm else None,
                 score=c.final, rank=rank, duplicate_of=c.duplicate_of, similarity=c.similarity,
                 pass_reached=c.pass_reached, llm_model=llm_data.get("model"),
                 status="duplicate" if c.duplicate_of else "candidate",
@@ -646,8 +655,8 @@ def _auto_generate(ctx: JobContext, candidate_ids: list[int]) -> list[int]:
                           .order_by(CandidateClip.score.desc())).scalars().all()
         picked = [c for c in cands if c.score >= eff["min_score"]][: eff["max_shorts"]]
         best_available = False
-        if not picked and cands and not settings.autopilot.enabled:
-            picked = cands[:1]  # manual mode: always show the user at least the strongest moment
+        if not picked and cands and not settings.autopilot.enabled and cands[0].score >= BEST_AVAILABLE_FLOOR:
+            picked = cands[:1]  # manual mode: show the strongest moment if it is at least reasonable
             best_available = True
         if eff["max_shorts_per_day"] and src is not None:
             today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -666,7 +675,8 @@ def _auto_generate(ctx: JobContext, candidate_ids: list[int]) -> list[int]:
 
 
 def create_short(s, c: CandidateClip, preset: str, profile: str, reframe_mode: str) -> int:  # type: ignore[no-untyped-def]
-    sh = Short(candidate_id=c.id, video_id=c.video_id, title=c.title or (c.text[:60] + "…"), status="draft",
+    fallback = (c.text[:60] + "…") if c.text.strip() else f"{(c.video.title if c.video else 'Highlight')[:60]} (highlight)"
+    sh = Short(candidate_id=c.id, video_id=c.video_id, title=c.title or fallback, status="draft",
                caption_preset=preset, render_profile=profile, reframe_mode=reframe_mode, start=c.start, end=c.end,
                duration=c.duration, score=c.score)
     c.status = "generated"
@@ -931,6 +941,9 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
         row = current_timeline(s, ctx.short_id)
         tl = EditTimeline.model_validate(row.data)
         transcript = " ".join(w.text for w in tl.captions.words)
+        if len(transcript) < 40 and c and c.reasoning:
+            prefix = f"{transcript} " if transcript else ""
+            transcript = prefix + f"(Little or no speech. Visual description: {c.reasoning})"
         video_title, channel = v.title, v.channel_name
         cand_title = c.title if c else None
         out = Path(sh.output_path)
@@ -954,7 +967,11 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
         ctx.log(f"cover selection failed: {exc}", "warning")
     with session_scope() as s:
         sh = s.get(Short, ctx.short_id)
-        sh.title = meta.titles[0] if meta.titles else sh.title
+        # Prefer a title not already used by another Short from the same video.
+        taken = {t.lower() for t in s.execute(select(Short.title).where(Short.video_id == sh.video_id,
+                                                                        Short.id != sh.id)).scalars() if t}
+        fresh = [t for t in meta.titles if t.lower() not in taken]
+        sh.title = (fresh or meta.titles or [sh.title])[0]
         sh.description = meta.description
         sh.hashtags = meta.hashtags
         sh.metadata_options = {**existing_meta, "metadata": meta.to_dict(), "selected_title": 0}

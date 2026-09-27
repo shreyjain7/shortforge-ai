@@ -198,7 +198,10 @@ def _render_once(tl: EditTimeline, out_path: Path, work_dir: Path, options: Rend
                                    out_label, tl.audio, total, extra_inputs)
     if measured and not all(math.isfinite(float(measured.get(k, "nan"))) for k in ("input_i", "input_tp")):
         measured = None  # silent programme: loudnorm cannot be two-pass measured
-    audio_graph = f"{graph};[{out_label}]{ag.loudnorm_filter(tl.audio, measured)},aresample=48000[aout]"
+    # Final brick-wall limiter: loudnorm alone can leave inter-sample overs (e.g. wind/impact transients).
+    ceiling = 10 ** (min(tl.audio.true_peak, -1.0) / 20)
+    audio_graph = (f"{graph};[{out_label}]{ag.loudnorm_filter(tl.audio, measured)},aresample=192000,"
+                   f"alimiter=limit={ceiling:.4f}:attack=2:release=50:level=disabled,aresample=48000[aout]")
 
     # ---- video filter chain in the encoder
     vchain = enhancement_filters(tl)

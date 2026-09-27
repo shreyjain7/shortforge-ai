@@ -182,7 +182,11 @@ def decide_layout(shot: list[Sample], speech: list[tuple[float, float]], cfg: Re
     if cfg.mode in ("presentation", "tech", "gameplay") and (presence < 0.5 or max_face < 0.07):
         return "fit"
     if presence < 0.3:
-        return "fit" if screen > 0.42 or cfg.mode in ("presentation", "tech", "gameplay") else "crop"
+        # Slides/screen recordings are mostly static; action/POV footage with many straight lines is not.
+        moving = sum(1 for s in shot if s.motion_x is not None) / max(1, n)
+        if cfg.mode in ("presentation", "tech", "gameplay"):
+            return "fit"
+        return "fit" if screen > 0.42 and moving < 0.5 else "crop"
     if cfg.mode in ("auto", "conversation", "podcast") and duration >= cfg.split_min_shot:
         # Two persistent, far-apart faces that both speak -> split screen.
         tracks: dict[int, list[tuple[float, float]]] = defaultdict(list)

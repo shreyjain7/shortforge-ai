@@ -123,3 +123,13 @@ def test_format_selection_respects_quality_cap() -> None:
     assert format_selector("best") == "bv*+ba/b"
     # original-language audio must win over auto-dubbed tracks
     assert format_sort("1080")[0] == "lang"
+
+
+def test_missing_channel_is_permanent_not_network() -> None:
+    from shortforge.core.errors import SourceResolutionError
+    from shortforge.engines.youtube.ytdlp_backend import _map_error
+
+    err = _map_error(Exception("ERROR: [youtube:tab] @nobody: Unable to download API page: HTTP Error 404: Not Found"),
+                     "resolving channel")
+    assert isinstance(err, SourceResolutionError) and not err.retryable and "does not exist" in err.message
+    assert _map_error(Exception("Read timed out"), "resolving channel").retryable

@@ -1,6 +1,6 @@
 [project]
 name = "shortforge"
-version = "0.2.0"
+version = "0.2.1"
 description = "ShortForge AI - local, privacy-first autonomous Shorts studio"
 readme = "README.md"
 requires-python = ">=3.12"

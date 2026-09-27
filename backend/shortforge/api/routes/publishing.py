@@ -111,7 +111,7 @@ def youtube_account() -> dict[str, Any]:
             creds = yauth.load_credentials()
             info["channel"] = yauth.connected_channel(creds) if creds else None
         except Exception as exc:
-            info["error"] = getattr(exc, "message", str(exc))
+            info["error"] = yauth.explain_api_error(exc) or getattr(exc, "message", str(exc))
     return info
 
 

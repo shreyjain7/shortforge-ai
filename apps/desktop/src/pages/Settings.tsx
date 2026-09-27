@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { CheckCircle2, ExternalLink, KeyRound, Link2, Plug, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, KeyRound, Link2, Plug, RefreshCw, XCircle } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge, Button, FieldRow, PageHeader, Segmented, Toggle } from "../components/ui";
@@ -85,7 +85,13 @@ function PublishingTab() {
             <Badge color="green"><CheckCircle2 size={11} /> Connected</Badge>
             <Button size="sm" variant="danger" onClick={() => disconnect.mutate()}>Disconnect</Button>
           </div>
-        ) : (
+        ) : null}
+        {acct?.connected && acct.error && (
+          <div className="card card-pad small" style={{ color: "var(--warning)", borderColor: "rgba(251,191,36,.35)", marginBottom: 8 }}>
+            <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> {acct.error}
+          </div>
+        )}
+        {acct?.connected ? null : (
           <div className="col" style={{ gap: 10, paddingTop: 6 }}>
             <div className="small muted">
               1. In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="gradient-text strong">Google Cloud Console <ExternalLink size={11} /></a>, enable

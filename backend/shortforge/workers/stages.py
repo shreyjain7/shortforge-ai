@@ -279,7 +279,9 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
             if src is not None:
                 src.status = "error"
                 src.last_error = getattr(exc, "message", str(exc))[:500]
-                src.next_scan_at = utcnow() + timedelta(minutes=30)
+                # A channel that doesn't exist won't appear in 30 minutes; don't hammer YouTube for it.
+                retry = timedelta(hours=24) if isinstance(exc, SourceResolutionError) else timedelta(minutes=30)
+                src.next_scan_at = utcnow() + retry
         app.bus.publish("source.updated", {"source_id": ctx.source_id, "status": "error"})
         raise
 
@@ -861,7 +863,7 @@ def render_short(ctx: JobContext) -> dict[str, Any]:
         Path(previous).unlink(missing_ok=True)
     shutil.rmtree(work, ignore_errors=True)
     ctx.enqueue("qc_short", short_id=ctx.short_id, video_id=video_id, priority=PRIORITY["qc"],
-                dedupe_key=f"qc:{ctx.short_id}", payload={"pages": len(pages)})
+                dedupe_key=f"qc:{ctx.short_id}", payload={"pages": len(pages), "manual": bool(ctx.payload.get("manual"))})
     return {"path": str(result.path), "encoder": result.encoder, "elapsed_s": result.elapsed_s,
             "fps": round(result.frames / max(0.01, result.elapsed_s), 1)}
 
@@ -920,7 +922,7 @@ def qc_short(ctx: JobContext) -> dict[str, Any]:
                                   origin="repair"))
         ctx.log(f"auto-repair attempt {attempts + 1}: {', '.join(notes)}")
         ctx.enqueue("render_short", short_id=ctx.short_id, video_id=sh.video_id, priority=PRIORITY["render"],
-                    dedupe_key=f"render:{ctx.short_id}")
+                    dedupe_key=f"render:{ctx.short_id}", payload={"manual": bool(ctx.payload.get("manual"))})
         return {"status": report.status, "repairs": notes}
     final_status = report.status
     with session_scope() as s:
@@ -936,7 +938,7 @@ def qc_short(ctx: JobContext) -> dict[str, Any]:
                    level="error", link=f"/shorts/{ctx.short_id}")
         return {"status": final_status}
     ctx.enqueue("short_metadata", short_id=ctx.short_id, video_id=sh.video_id, priority=PRIORITY["metadata"],
-                dedupe_key=f"meta:{ctx.short_id}")
+                dedupe_key=f"meta:{ctx.short_id}", payload={"manual": bool(ctx.payload.get("manual"))})
     return {"status": final_status, "issues": len(report.issues), "repairs": repairs}
 
 
@@ -992,8 +994,9 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
         sh.status = "ready" if qc == "PASS" or not (ap.enabled and ap.require_qc_pass) else "review"
         status = sh.status
         title = sh.title
+        tried_before = s.execute(select(Upload.id).where(Upload.short_id == sh.id).limit(1)).first() is not None
     app.notify("short_ready", "Short ready", title, link=f"/shorts/{ctx.short_id}")
-    if status == "ready" and settings.autopilot.enabled and settings.autopilot.auto_upload:
+    if autopilot_may_upload(settings.autopilot, status, manual=bool(ctx.payload.get("manual")), tried_before=tried_before):
         from shortforge.engines.publishing.youtube_auth import load_credentials
 
         try:
@@ -1008,6 +1011,12 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
 
 
 # ============================================================================ publishing
+def autopilot_may_upload(ap: Any, status: str, *, manual: bool, tried_before: bool) -> bool:
+    """Autopilot uploads a Short at most once, and never one the user is working on by hand
+    (renders started from the UI, re-renders, editor saves): those are published from the UI."""
+    return status == "ready" and ap.enabled and ap.auto_upload and not manual and not tried_before
+
+
 def schedule_short(short_id: int, at: datetime | None = None, visibility: str | None = None) -> int:
     """Create an Upload for a Short at the next free slot (or at ``at``) and queue the upload job."""
     from shortforge.engines.publishing.scheduler import next_slot

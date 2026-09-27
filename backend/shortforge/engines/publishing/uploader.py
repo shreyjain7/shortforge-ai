@@ -91,7 +91,10 @@ def upload_video(creds: Any, req: UploadRequest, *, progress: Callable[[UploadPr
             elif code in (401,):
                 raise ShortForgeError("YouTube rejected the credentials. Reconnect your account.", detail=text) from exc
             else:
-                raise ShortForgeError(f"YouTube rejected the upload ({code}).", detail=text) from exc
+                from shortforge.engines.publishing.youtube_auth import explain_api_error
+
+                raise ShortForgeError(explain_api_error(exc) or f"YouTube rejected the upload ({code}).",
+                                      detail=text) from exc
         except (ResumableUploadError, ConnectionError, TimeoutError, OSError) as exc:
             log.warning("upload chunk error: %s", exc)
         else:

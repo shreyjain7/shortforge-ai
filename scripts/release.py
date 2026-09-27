@@ -135,6 +135,12 @@ def github_token() -> str:
     sys.exit("No GitHub token available")
 
 
+def already_published(v: str) -> bool:
+    h = {"Authorization": f"token {github_token()}", "Accept": "application/vnd.github+json"}
+    r = httpx.get(f"https://api.github.com/repos/{REPO}/releases/tags/v{v}", headers=h, timeout=30)
+    return r.status_code == 200 and any(a["name"].endswith("-setup.exe") for a in r.json().get("assets", []))
+
+
 def publish(v: str, files: dict[str, Path]) -> str:
     h = {"Authorization": f"token {github_token()}", "Accept": "application/vnd.github+json"}
     api = f"https://api.github.com/repos/{REPO}"
@@ -175,10 +181,15 @@ Installed copies update themselves automatically.
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--publish", action="store_true")
+    ap.add_argument("--force", action="store_true", help="rebuild and replace an already published release")
     args = ap.parse_args()
     v = version()
     check_versions(v)
     print(f"== ShortForge {v}")
+    # Publishing locally creates the tag, which triggers the tag workflow: don't rebuild what is already out.
+    if args.publish and not args.force and already_published(v):
+        print(f"v{v} is already published; nothing to do (use --force to replace it)")
+        return
     cargo_bin = Path.home() / ".cargo" / "bin"
     if not shutil.which("cargo") and cargo_bin.is_dir():
         os.environ["PATH"] = f"{cargo_bin}{os.pathsep}{os.environ['PATH']}"

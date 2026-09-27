@@ -136,7 +136,7 @@ def save_timeline(short_id: int, body: dict[str, Any], render: bool = True, s: S
     s.commit()
     job = None
     if render:
-        job = get_context().queue.enqueue("render_short", short_id=short_id, video_id=sh.video_id,
+        job = get_context().queue.enqueue("render_short", {"manual": True}, short_id=short_id, video_id=sh.video_id,
                                           priority=PRIORITY["render"] + 15, dedupe_key=f"render:{short_id}")
     return {"version": version, "job_id": job}
 
@@ -157,7 +157,7 @@ def rerender(short_id: int, rebuild: bool = False, s: Session = Depends(get_sess
         raise HTTPException(404, "Short not found")
     sh.repair_attempts = 0
     s.commit()
-    return {"job_id": get_context().queue.enqueue("render_short", {"rebuild": rebuild}, short_id=short_id,
+    return {"job_id": get_context().queue.enqueue("render_short", {"rebuild": rebuild, "manual": True}, short_id=short_id,
                                                   video_id=sh.video_id, priority=PRIORITY["render"] + 15,
                                                   dedupe_key=f"render:{short_id}")}
 

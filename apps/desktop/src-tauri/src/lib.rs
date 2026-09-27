@@ -82,6 +82,19 @@ fn stop_running_engine() {
     }
 }
 
+/// The configured size is too tall for common 125-150% scaled laptop screens; shrink it to fit
+/// the monitor's work area (above the taskbar) and re-center.
+fn fit_to_monitor(win: &tauri::WebviewWindow) {
+    let (Ok(Some(mon)), Ok(size)) = (win.current_monitor(), win.outer_size()) else { return };
+    let area = mon.work_area().size;
+    let w = size.width.min(area.width * 94 / 100);
+    let h = size.height.min(area.height * 94 / 100);
+    if (w, h) != (size.width, size.height) {
+        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+        let _ = win.center();
+    }
+}
+
 /// Stop an engine this shell spawned. The venv's python.exe is only a launcher, so killing the
 /// child alone would orphan the real interpreter: ask it to exit, then kill the whole tree.
 fn stop_owned_engine(mut child: Child) {
@@ -387,6 +400,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![engine_status, start_engine, setup_engine])
         .setup(|app| {
             let handle = app.handle().clone();
+            if let Some(win) = app.webview_windows().values().next() {
+                fit_to_monitor(win);
+            }
             // Start immediately when possible; otherwise the UI runs the guided setup.
             if !status(&handle).needs_setup {
                 if let Err(e) = start_engine_inner(&handle) {

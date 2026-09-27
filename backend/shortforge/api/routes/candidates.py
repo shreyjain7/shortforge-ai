@@ -61,7 +61,7 @@ def generate(cid: int, s: Session = Depends(get_session)) -> dict[str, Any]:
     eff = effective(get_context().settings(), source_for(s, v))
     sid = create_short(s, c, eff["caption_preset"], eff["render_profile"], eff["reframe_mode"])
     s.commit()
-    get_context().queue.enqueue("render_short", short_id=sid, video_id=c.video_id, priority=PRIORITY["render"] + 10,
+    get_context().queue.enqueue("render_short", {"manual": True}, short_id=sid, video_id=c.video_id, priority=PRIORITY["render"] + 10,
                                 dedupe_key=f"render:{sid}")
     return {"short_id": sid}
 

@@ -100,3 +100,27 @@ def test_job_for_deleted_record_stops_cleanly(ctx) -> None:
     with pytest.raises(EntityGone) as exc:
         REGISTRY["render_short"].handler(jc)
     assert "deleted" in exc.value.message
+
+
+def test_missing_channel_backs_off_for_a_day(ctx, monkeypatch) -> None:
+    from shortforge.core.errors import SourceResolutionError
+
+    class Missing(FakeProvider):
+        def list_videos(self, ref, limit=30):  # type: ignore[no-untyped-def]
+            raise SourceResolutionError("YouTube says this channel does not exist.")
+
+        def _channel_and_uploads(self, ref, limit):  # type: ignore[no-untyped-def]
+            raise SourceResolutionError("YouTube says this channel does not exist.")
+
+    monkeypatch.setattr(ctx, "source_provider", lambda settings=None: Missing([]))
+    with session_scope() as s:
+        s.add(Source(kind="channel", input="@nobody", url="https://www.youtube.com/@nobody"))
+        s.flush()
+        sid = s.execute(select(Source.id)).scalar()
+    with pytest.raises(SourceResolutionError):
+        _run_scan(ctx, sid)
+    with session_scope() as s:
+        src = s.get(Source, sid)
+        assert src.status == "error" and "does not exist" in src.last_error
+        wait = src.next_scan_at.replace(tzinfo=UTC) - datetime.now(UTC)
+        assert wait > timedelta(hours=23)

@@ -133,6 +133,17 @@ def youtube_client(creds: Any) -> Any:
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
+def explain_api_error(exc: BaseException) -> str | None:
+    """Plain-language fix for the setup mistakes new users hit most, or None."""
+    text = str(exc)
+    if any(k in text for k in ("accessNotConfigured", "SERVICE_DISABLED", "has not been used in project")):
+        return ("The YouTube Data API v3 is not enabled in your Google Cloud project. Enable it at "
+                "https://console.cloud.google.com/apis/library/youtube.googleapis.com, wait a minute, then try again.")
+    if "youtubeSignupRequired" in text:
+        return "This Google account has no YouTube channel yet. Create one on youtube.com, then try again."
+    return None
+
+
 def connected_channel(creds: Any) -> dict[str, Any] | None:
     resp = youtube_client(creds).channels().list(part="snippet,statistics", mine=True).execute()
     items = resp.get("items") or []

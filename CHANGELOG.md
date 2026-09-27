@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-09-27
+
+### New
+- Dashboard "Get started" checklist; select several Shorts to upload privately, schedule or delete them at once.
+- Version and update badge in the sidebar; "Studio" links for published videos.
+- Clear instructions when the YouTube Data API isn't enabled or the Google account has no channel.
+
+### Fixed
+- Autopilot auto-upload no longer re-uploads a Short you re-render or edit by hand, and uploads each Short at most once.
+- The window is resized to fit smaller / high-DPI laptop screens.
+- Closing the app now fully stops the local engine.
+- Channels that don't exist are re-checked daily instead of every 30 minutes.
+
 ## [0.2.0] - 2026-09-27
 
 ### New

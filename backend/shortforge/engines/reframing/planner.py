@@ -328,5 +328,15 @@ def plan_punch_ins(timeline: EditTimeline, emphasis_times: list[float], cfg: Ref
         events.append(ZoomEvent(start=max(0.0, t - 0.15), end=end, scale=max_scale, ease_in=0.45, ease_out=0.5,
                                 reason="emphasis"))
         last = t
-    events.sort(key=lambda e: e.start)
-    return events
+    # Global density cap: at most ~1 punch-in per 8 s and >= 3 s apart; jump-cut punches (which hide
+    # cuts) take priority over emphasis push-ins.
+    budget = max(1, int(timeline.duration / 8))
+    ranked = sorted(events, key=lambda e: (e.reason != "jump-cut punch", e.start))
+    kept: list[ZoomEvent] = []
+    for e in ranked:
+        if len(kept) >= budget:
+            break
+        if all(e.start >= k.end + 3.0 or e.end <= k.start - 3.0 for k in kept):
+            kept.append(e)
+    kept.sort(key=lambda e: e.start)
+    return kept

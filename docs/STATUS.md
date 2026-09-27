@@ -27,5 +27,6 @@ external services mocked. Anything not listed as verified is called out explicit
 - Duplicate detection uses source ranges, transcript shingles, text embeddings and per-second
   visual hashes; there is no audio fingerprinting.
 - Colour emoji in captions are not supported by libass.
+- Sources with their own burned-in subtitles will show both caption sets (burned-in text is not detected).
 - The Windows installer packages the desktop shell; the Python engine runs from the cloned repo
   (created by `scripts/setup.ps1`) rather than being frozen into the installer.

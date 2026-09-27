@@ -202,7 +202,38 @@ def paginate(words: list[CapWord], preset: CaptionPreset, cfg: LayoutConfig,
         cur.append(w)
     if cur:
         pages.append(cur)
-    return pages
+    return _merge_flash_pages(pages, measurer, max_w, preset.max_lines, pop_growth(preset))
+
+
+MIN_PAGE_S = 0.3
+
+
+def _merge_flash_pages(pages: list[list[CapWord]], measurer: TextMeasurer, max_w: float, max_lines: int,
+                       grow: float) -> list[list[CapWord]]:
+    """Merge pages that would flash for less than MIN_PAGE_S (degenerate word timestamps) into a
+    neighbour when the combined text still fits."""
+    def fits(ws: list[CapWord]) -> bool:
+        widths = [measurer.width(w.text.strip()) for w in ws]
+        return _split_lines(widths, measurer.space(), max_w, max_lines, grow) is not None
+
+    out: list[list[CapWord]] = []
+    i = 0
+    while i < len(pages):
+        page = pages[i]
+        nxt = pages[i + 1] if i + 1 < len(pages) else None
+        span = (nxt[0].start if nxt else page[-1].end + 0.35) - page[0].start
+        if span < MIN_PAGE_S:
+            if nxt is not None and fits(page + nxt):
+                pages[i + 1] = page + nxt
+                i += 1
+                continue
+            if out and fits(out[-1] + page):
+                out[-1] = out[-1] + page
+                i += 1
+                continue
+        out.append(page)
+        i += 1
+    return out
 
 
 def layout_pages(words: list[CapWord], preset: CaptionPreset, cfg: LayoutConfig,

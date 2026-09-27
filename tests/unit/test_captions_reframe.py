@@ -153,3 +153,21 @@ def test_timeline_mapping() -> None:
     assert tl.source_to_output(11) == 1 and tl.source_to_output(13) is None and tl.source_to_output(15.5) == 2.5
     assert tl.output_to_source(2.5) == 15.5
     assert tl.cut_points() == [2]
+
+
+def test_flash_pages_are_merged() -> None:
+    cfg = LayoutConfig(1080, 1920)
+    words = [CapWord("we", 7.5, 7.8), CapWord("understand", 8.0, 8.04), CapWord("that.", 8.04, 8.4)]
+    pages = layout_pages(words, get_preset("Bold"), cfg, clip_duration=10)
+    assert all(p.end - p.start >= 0.3 for p in pages)
+
+
+def test_punch_in_density_cap() -> None:
+    from shortforge.engines.reframing.planner import ReframeConfig, plan_punch_ins
+
+    tl = EditTimeline(source_path="x", source_width=1920, source_height=1080,
+                      ranges=[SourceRange(start=0, end=4), SourceRange(start=5, end=9), SourceRange(start=10, end=16)])
+    events = plan_punch_ins(tl, [2.0, 7.0, 12.0], ReframeConfig(), 1080)
+    assert len(events) <= max(1, int(tl.duration / 8))
+    for a, b in itertools.pairwise(events):
+        assert b.start >= a.end + 3.0

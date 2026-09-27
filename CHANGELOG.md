@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2] - 2026-09-27
+
+### Fixed
+- Updating the app now also upgrades the local AI engine (0.2.1 kept running the previous engine).
+- The engine is stopped cleanly before an update installs, so nothing is left running in the background.
+- Troubleshooting log for the desktop shell (`shell.log` in the app's log folder).
+
 ## [0.2.1] - 2026-09-27
 
 ### New

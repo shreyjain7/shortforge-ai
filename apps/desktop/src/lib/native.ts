@@ -60,7 +60,7 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
     install: async (onProgress) => {
       let total: number | null = null;
       let downloaded = 0;
-      await update.downloadAndInstall((event) => {
+      await update.download((event) => {
         if (event.event === "Started") {
           total = event.data.contentLength ?? null;
           onProgress(0, total);
@@ -71,6 +71,11 @@ export async function checkForUpdate(): Promise<AvailableUpdate | null> {
           onProgress(total ?? downloaded, total ?? downloaded);
         }
       });
+      // The installer closes the app without the normal exit path: stop the engine first so its
+      // files can be replaced and nothing is left running.
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("stop_engine").catch(() => undefined);
+      await update.install();
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     },

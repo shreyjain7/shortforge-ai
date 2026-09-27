@@ -1,6 +1,6 @@
 [package]
 name = "shortforge"
-version = "0.2.1"
+version = "0.2.2"
 description = "ShortForge AI - local autonomous Shorts studio"
 authors = ["ShortForge contributors"]
 license = "MIT"

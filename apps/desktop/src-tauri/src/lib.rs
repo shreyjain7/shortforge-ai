@@ -12,13 +12,25 @@ use std::io::{BufRead, BufReader};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
 
 const ENGINE_PORT: u16 = 8756;
+
+static SHELL_LOG: OnceLock<PathBuf> = OnceLock::new();
+
+/// Append a line to <app log dir>/shell.log (engine lifecycle, setup, exit) for troubleshooting.
+fn shell_log(msg: impl AsRef<str>) {
+    use std::io::Write;
+    let Some(path) = SHELL_LOG.get() else { return };
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "{secs} {}", msg.as_ref());
+    }
+}
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -73,6 +85,7 @@ fn running_engine_version() -> Option<String> {
 
 /// Ask a running engine to exit and wait until its port is free.
 fn stop_running_engine() {
+    shell_log("asking running engine to shut down");
     let _ = engine_http("POST", "/api/system/shutdown");
     for _ in 0..40 {
         if !engine_running() {
@@ -98,6 +111,7 @@ fn fit_to_monitor(win: &tauri::WebviewWindow) {
 /// Stop an engine this shell spawned. The venv's python.exe is only a launcher, so killing the
 /// child alone would orphan the real interpreter: ask it to exit, then kill the whole tree.
 fn stop_owned_engine(mut child: Child) {
+    shell_log(format!("stopping engine pid {}", child.id()));
     if engine_running() {
         stop_running_engine();
     }
@@ -176,11 +190,22 @@ fn installed_version() -> Option<String> {
     std::fs::read_to_string(engine_home().join("version.txt")).ok().map(|s| s.trim().to_string())
 }
 
+/// The engine wheel shipped with this build. Updates install over the previous version and leave
+/// its wheel behind, so pick the one matching the app version (else the newest).
 fn bundled_wheel(app: &AppHandle) -> Option<PathBuf> {
     let dir = app.path().resource_dir().ok()?.join("resources").join("engine");
-    std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| {
-        p.extension().map(|x| x == "whl").unwrap_or(false)
-    })
+    let mut wheels: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "whl").unwrap_or(false)).collect();
+    let current = app.package_info().version.to_string();
+    if let Some(exact) = wheels.iter().find(|w| wheel_version(w).as_deref() == Some(current.as_str())) {
+        return Some(exact.clone());
+    }
+    wheels.sort_by_key(|w| version_key(&wheel_version(w).unwrap_or_default()));
+    wheels.pop()
+}
+
+fn version_key(v: &str) -> Vec<u64> {
+    v.split(|c: char| !c.is_ascii_digit()).filter_map(|x| x.parse().ok()).collect()
 }
 
 fn wheel_version(wheel: &Path) -> Option<String> {
@@ -237,6 +262,7 @@ fn start_engine_inner(app: &AppHandle) -> Result<(), String> {
     } else {
         return Err("The ShortForge engine is not installed yet.".into());
     };
+    shell_log(format!("engine started pid {}", child.id()));
     *app.state::<Engine>().0.lock().unwrap() = Some(child);
     Ok(())
 }
@@ -270,6 +296,17 @@ fn start_engine(app: AppHandle) -> Result<(), String> {
     start_engine_inner(&app)
 }
 
+/// Called before an update is installed.
+#[tauri::command]
+fn stop_engine(app: AppHandle) {
+    let owned = app.state::<Engine>().0.lock().unwrap().take();
+    if let Some(child) = owned {
+        stop_owned_engine(child);
+    } else if dev_engine().is_none() && engine_running() {
+        stop_running_engine();
+    }
+}
+
 // ------------------------------------------------------------------------------------ setup / upgrade
 fn has_nvidia_gpu() -> bool {
     let mut cmd = Command::new("nvidia-smi");
@@ -279,6 +316,7 @@ fn has_nvidia_gpu() -> bool {
 }
 
 fn run_step(app: &AppHandle, step: u32, total: u32, title: &str, mut cmd: Command) -> Result<(), String> {
+    shell_log(format!("setup step {step}/{total}: {title}"));
     let emit = |detail: String| {
         let _ = app.emit("engine-setup", SetupEvent { step, total, title: title.into(), detail, done: false, error: None });
     };
@@ -397,9 +435,14 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(Engine(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![engine_status, start_engine, setup_engine])
+        .invoke_handler(tauri::generate_handler![engine_status, start_engine, stop_engine, setup_engine])
         .setup(|app| {
             let handle = app.handle().clone();
+            if let Ok(dir) = app.path().app_log_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = SHELL_LOG.set(dir.join("shell.log"));
+            }
+            shell_log(format!("start v{}", app.package_info().version));
             if let Some(win) = app.webview_windows().values().next() {
                 fit_to_monitor(win);
             }
@@ -415,7 +458,11 @@ pub fn run() {
         .expect("error while building ShortForge");
 
     app.run(|handle, event| {
+        if let RunEvent::ExitRequested { .. } = event {
+            shell_log("exit requested");
+        }
         if let RunEvent::Exit = event {
+            shell_log("exit");
             let owned = handle.state::<Engine>().0.lock().unwrap().take();
             if let Some(child) = owned {
                 stop_owned_engine(child);

@@ -68,6 +68,9 @@ def build_wheel() -> Path:
     shutil.rmtree(engine, ignore_errors=True)
     engine.mkdir(parents=True)
     sh([shutil.which("uv") or str(fetch_uv()), "build", "--wheel", "--out-dir", str(engine)])
+    for extra in engine.iterdir():  # uv drops a .gitignore into the output folder
+        if extra.suffix != ".whl":
+            extra.unlink()
     wheels = list(engine.glob("shortforge-*.whl"))
     assert len(wheels) == 1, wheels
     return wheels[0]

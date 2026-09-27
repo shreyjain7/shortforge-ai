@@ -82,6 +82,22 @@ fn stop_running_engine() {
     }
 }
 
+/// Stop an engine this shell spawned. The venv's python.exe is only a launcher, so killing the
+/// child alone would orphan the real interpreter: ask it to exit, then kill the whole tree.
+fn stop_owned_engine(mut child: Child) {
+    if engine_running() {
+        stop_running_engine();
+    }
+    if let Ok(None) = child.try_wait() {
+        let mut kill = Command::new("taskkill");
+        kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
+        no_window(&mut kill);
+        let _ = kill.status();
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
 fn no_window(cmd: &mut Command) {
     #[cfg(windows)]
     {
@@ -115,8 +131,12 @@ fn dev_engine() -> Option<(PathBuf, PathBuf)> {
             starts.push(dir.to_path_buf());
         }
     }
-    if let Ok(cwd) = std::env::current_dir() {
-        starts.push(cwd);
+    // Only `tauri dev` should pick up a checkout from the working directory; an installed app
+    // launched from a terminal inside some repo must still use its managed engine.
+    if cfg!(debug_assertions) {
+        if let Ok(cwd) = std::env::current_dir() {
+            starts.push(cwd);
+        }
     }
     for start in starts {
         let mut cur: Option<&Path> = Some(start.as_path());
@@ -297,9 +317,9 @@ fn setup_engine_blocking(app: &AppHandle) -> Result<(), String> {
     let home = engine_home();
     std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
     // Stop an older engine so its files can be replaced (ours or one left over from a previous version).
-    if let Some(mut child) = app.state::<Engine>().0.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
+    let owned = app.state::<Engine>().0.lock().unwrap().take();
+    if let Some(child) = owned {
+        stop_owned_engine(child);
     }
     if engine_running() {
         stop_running_engine();
@@ -380,9 +400,9 @@ pub fn run() {
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
-            if let Some(mut child) = handle.state::<Engine>().0.lock().unwrap().take() {
-                let _ = child.kill();
-                let _ = child.wait();
+            let owned = handle.state::<Engine>().0.lock().unwrap().take();
+            if let Some(child) = owned {
+                stop_owned_engine(child);
             }
         }
     });

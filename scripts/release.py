@@ -67,7 +67,7 @@ def build_wheel() -> Path:
     engine = RES / "engine"
     shutil.rmtree(engine, ignore_errors=True)
     engine.mkdir(parents=True)
-    sh(["uv", "build", "--wheel", "--out-dir", str(engine)])
+    sh([shutil.which("uv") or str(fetch_uv()), "build", "--wheel", "--out-dir", str(engine)])
     wheels = list(engine.glob("shortforge-*.whl"))
     assert len(wheels) == 1, wheels
     return wheels[0]
@@ -75,14 +75,18 @@ def build_wheel() -> Path:
 
 def fetch_uv() -> Path:
     target = RES / "uv.exe"
-    if target.exists():
+    if target.exists() and target.stat().st_size > 1_000_000:
         return target
     url = f"https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/uv-x86_64-pc-windows-msvc.zip"
     print("downloading", url)
-    data = httpx.get(url, follow_redirects=True, timeout=120).content
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+    r = httpx.get(url, follow_redirects=True, timeout=120)
+    r.raise_for_status()
+    RES.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".part")
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         name = next(n for n in zf.namelist() if n.endswith("uv.exe"))
-        target.write_bytes(zf.read(name))
+        tmp.write_bytes(zf.read(name))
+    tmp.replace(target)
     return target
 
 
@@ -175,8 +179,11 @@ def main() -> None:
     v = version()
     check_versions(v)
     print(f"== ShortForge {v}")
-    build_wheel()
+    cargo_bin = Path.home() / ".cargo" / "bin"
+    if not shutil.which("cargo") and cargo_bin.is_dir():
+        os.environ["PATH"] = f"{cargo_bin}{os.pathsep}{os.environ['PATH']}"
     fetch_uv()
+    build_wheel()
     exe, sig = build_app(v)
     files = assemble(v, exe, sig)
     print("built:", *files.values(), sep="\n  ")

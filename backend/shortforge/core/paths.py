@@ -151,9 +151,14 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def resources_dir() -> Path:
+    """Bundled data shipped inside the package (fonts, caption presets)."""
+    return Path(__file__).resolve().parents[1] / "resources"
+
+
 def assets_dir() -> Path:
-    return project_root() / "assets"
+    return resources_dir()
 
 
 def presets_dir() -> Path:
-    return project_root() / "presets"
+    return resources_dir()

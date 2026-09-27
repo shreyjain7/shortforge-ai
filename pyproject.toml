@@ -1,6 +1,6 @@
 [project]
 name = "shortforge"
-version = "0.1.0"
+version = "0.2.0"
 description = "ShortForge AI - local, privacy-first autonomous Shorts studio"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -57,7 +57,8 @@ build-backend = "setuptools.build_meta"
 where = ["backend"]
 
 [tool.setuptools.package-data]
-shortforge = ["database/migrations/*.ini", "database/migrations/**/*.py", "database/migrations/*.mako"]
+shortforge = ["database/migrations/*.ini", "database/migrations/**/*.py", "database/migrations/*.mako",
+              "resources/fonts/*", "resources/captions/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

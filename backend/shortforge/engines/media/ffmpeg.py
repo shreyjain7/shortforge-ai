@@ -27,11 +27,23 @@ CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 def set_ffmpeg_override(path: str | None) -> None:
     global _override
     _override = path
-    find_ffmpeg.cache_clear()
+    reset_caches()
+
+
+def reset_caches() -> None:
+    """Forget cached discovery results (after installing or changing FFmpeg)."""
+    for fn in (find_ffmpeg, ffmpeg_version, available_encoders, encoder_works):
+        fn.cache_clear()
 
 
 def _candidate_dirs() -> list[Path]:
     dirs: list[Path] = []
+    try:  # managed copy installed by ShortForge itself (Settings -> Tools)
+        from shortforge.core.tools import tool_bin_dir
+
+        dirs.append(tool_bin_dir("ffmpeg"))
+    except Exception:
+        pass
     local = os.environ.get("LOCALAPPDATA")
     if local:
         dirs.append(Path(local) / "Microsoft" / "WinGet" / "Links")

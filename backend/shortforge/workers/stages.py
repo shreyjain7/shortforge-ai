@@ -105,6 +105,16 @@ def ensure_disk_space(folder: Path, min_gb: float) -> None:
         raise RetryableError(f"Low disk space ({free_gb:.1f} GB free, {min_gb:.0f} GB required).")
 
 
+def need(s, model, ident, what: str):  # type: ignore[no-untyped-def]
+    """Fetch a record a job depends on; if it was deleted, stop the job cleanly."""
+    from shortforge.core.errors import EntityGone
+
+    obj = s.get(model, ident) if ident is not None else None
+    if obj is None:
+        raise EntityGone(what)
+    return obj
+
+
 def _set_video(video_id: int, **fields: Any) -> None:
     with session_scope() as s:
         v = s.get(Video, video_id)
@@ -176,7 +186,7 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        src = s.get(Source, ctx.source_id)
+        src = need(s, Source, ctx.source_id, "source")
         if src is None:
             raise ShortForgeError("Source no longer exists.")
         src.status = "scanning"
@@ -207,7 +217,7 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
                 _upsert_channel(s, channel)
                 if count and not channel.video_count:
                     s.get(Channel, channel.id).video_count = count
-                src = s.get(Source, ctx.source_id)
+                src = need(s, Source, ctx.source_id, "source")
                 src.channel_id = channel.id
                 src.title = channel.name
                 src.thumbnail_url = channel.avatar_url
@@ -218,7 +228,7 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
         queued = 0
         skipped: dict[str, int] = {}
         with session_scope() as s:
-            max_age = s.get(Source, ctx.source_id).max_video_age_days
+            max_age = need(s, Source, ctx.source_id, "source").max_video_age_days
         # Network work first (never hold a DB write transaction during I/O).
         fresh = [m for m in videos if m.id and m.id not in known]
         for i, meta in enumerate(fresh):
@@ -235,7 +245,7 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
                 except (SourceResolutionError, ShortForgeError) as exc:
                     ctx.log(f"metadata for {meta.id} unavailable: {exc}")
         with session_scope() as s:
-            src = s.get(Source, ctx.source_id)
+            src = need(s, Source, ctx.source_id, "source")
             first_scan = src.last_scan_at is None
             if kind == SourceKind.VIDEO and fresh:
                 src.title = fresh[0].title
@@ -265,7 +275,7 @@ def scan_source(ctx: JobContext) -> dict[str, Any]:
         return {"discovered": len(new_ids), "queued": queued, "skipped": skipped}
     except Exception as exc:
         with session_scope() as s:
-            src = s.get(Source, ctx.source_id)
+            src = need(s, Source, ctx.source_id, "source")
             if src is not None:
                 src.status = "error"
                 src.last_error = getattr(exc, "message", str(exc))[:500]
@@ -280,7 +290,7 @@ def download_video(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         if v is None:
             raise ShortForgeError("Video no longer exists.")
         meta = VideoMeta(id=v.youtube_id or "", title=v.title, url=v.source_url or "", duration=v.duration_s)
@@ -307,7 +317,7 @@ def download_video(ctx: JobContext) -> dict[str, Any]:
         with session_scope() as s:
             dl = s.get(Download, dl_id)
             dl.status, dl.error, dl.finished_at = "failed", getattr(exc, "message", str(exc))[:500], utcnow()
-            v = s.get(Video, ctx.video_id)
+            v = need(s, Video, ctx.video_id, "video")
             v.download_status = "failed" if not getattr(exc, "retryable", False) else "queued"
             v.error = getattr(exc, "message", str(exc))[:500]
         raise
@@ -316,7 +326,7 @@ def download_video(ctx: JobContext) -> dict[str, Any]:
         dl.status, dl.finished_at, dl.path = "done", utcnow(), str(result.path)
         dl.bytes_total = dl.bytes_done = result.size
         dl.format_id = result.format_id
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.local_path = str(result.path)
         v.width, v.height, v.fps = result.width, result.height, result.fps
         v.file_size = result.size
@@ -336,7 +346,7 @@ def download_video(ctx: JobContext) -> dict[str, Any]:
 @job_handler("import_local", resource="io", max_retries=1, priority=PRIORITY["download"], label="Import")
 def import_local(ctx: JobContext) -> dict[str, Any]:
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         path = Path(v.local_path or "")
     if not path.exists():
         raise ShortForgeError(f"File not found: {path}")
@@ -347,7 +357,7 @@ def import_local(ctx: JobContext) -> dict[str, Any]:
     w, h = info.display_size
     with session_scope() as s:
         dup = s.execute(select(Video.id).where(Video.content_hash == digest, Video.id != ctx.video_id)).scalar()
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.content_hash = digest
         v.width, v.height, v.fps, v.duration_s, v.file_size = w, h, info.fps, info.duration, info.size
         v.download_status = "done"
@@ -365,7 +375,7 @@ def import_local(ctx: JobContext) -> dict[str, Any]:
 def prepare_media(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         src = Path(v.local_path or "")
         duration = v.duration_s
         v.processing_status, v.stage = "processing", "prepare"
@@ -384,7 +394,7 @@ def prepare_media(ctx: JobContext) -> dict[str, Any]:
         except ff.FFmpegError as exc:
             ctx.log(f"thumbnail failed: {exc.message}", "warning")
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.proxy_path, v.audio_path = str(ppath), str(wav)
         if thumb.exists():
             v.thumbnail_path = str(thumb)
@@ -399,7 +409,7 @@ def prepare_media(ctx: JobContext) -> dict[str, Any]:
 # ============================================================================ analysis
 def _maybe_enqueue_analysis(ctx: JobContext) -> None:
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         ready = v.transcript_status == "done" and v.scenes_status == "done"
     if ready:
         ctx.enqueue("analyze_video", video_id=ctx.video_id, priority=PRIORITY["analyze"],
@@ -411,7 +421,7 @@ def transcribe(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         existing = latest_transcript(s, ctx.video_id)
         if existing is not None and not ctx.payload.get("force"):
             v.transcript_status = "done"
@@ -450,7 +460,7 @@ def transcribe(ctx: JobContext) -> dict[str, Any]:
             {"transcript_id": t.id, "idx": w.idx, "word": w.text[:200], "start": w.start, "end": w.end,
              "probability": w.prob, "segment_idx": w.segment_idx, "sentence_idx": w.sentence_idx}
             for w in result.words])
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.transcript_status = "done"
         v.language = result.language
     _maybe_enqueue_analysis(ctx)
@@ -462,7 +472,7 @@ def transcribe(ctx: JobContext) -> dict[str, Any]:
 def detect_scenes_job(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         ppath = Path(v.proxy_path or "")
         v.scenes_status = "running"
     result = detect_scenes(ppath, progress=ctx.sub(0.0, 0.97), cancel=ctx.cancel)
@@ -471,7 +481,7 @@ def detect_scenes_job(ctx: JobContext) -> dict[str, Any]:
         s.execute(delete(Scene).where(Scene.video_id == ctx.video_id))
         s.bulk_insert_mappings(Scene, [{"video_id": ctx.video_id, "idx": i, "start": a, "end": b, "kind": "cut"}
                                        for i, (a, b) in enumerate(result.scenes)])
-        s.get(Video, ctx.video_id).scenes_status = "done"
+        need(s, Video, ctx.video_id, "video").scenes_status = "done"
     _maybe_enqueue_analysis(ctx)
     return {"scenes": len(result.scenes)}
 
@@ -481,7 +491,7 @@ def analyze_video(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.analysis_status, v.stage = "running", "analyze"
         title = v.title
         t = latest_transcript(s, ctx.video_id)
@@ -516,7 +526,7 @@ def analyze_video(ctx: JobContext) -> dict[str, Any]:
             s.add(TimelineSegment(video_id=ctx.video_id, start=seg.start, end=seg.end, label=seg.label,
                                   summary=seg.summary, interest=seg.interest, source=seg.source,
                                   energy=round(features.energy_at(seg.start, seg.end), 2)))
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.analysis_status = "analyzed"
         v.analysis = {**(v.analysis or {}), "audio": features.summary(), "timeline_source": source,
                       "llm_model": llm.model if llm else None}
@@ -543,7 +553,7 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.stage = "find_clips"
         src = source_for(s, v)
         eff = effective(settings, src)
@@ -631,7 +641,7 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
             for d in detections[:400]:
                 s.add(Face(video_id=ctx.video_id, t=d["t"], x=d["x"], y=d["y"], w=d["w"], h=d["h"],
                            score=d["score"], track_id=d["track_id"]))
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         v.processing_status = "analyzed"
         v.stage = None
         v.analysis = {**(v.analysis or {}), "passes": result.passes, "spans_considered": result.considered,
@@ -647,7 +657,7 @@ def _auto_generate(ctx: JobContext, candidate_ids: list[int]) -> list[int]:
     if not (settings.general.auto_generate_shorts or settings.autopilot.enabled):
         return []
     with session_scope() as s:
-        v = s.get(Video, ctx.video_id)
+        v = need(s, Video, ctx.video_id, "video")
         src = source_for(s, v)
         eff = effective(settings, src)
         cands = s.execute(select(CandidateClip).where(CandidateClip.id.in_(candidate_ids),
@@ -779,7 +789,7 @@ def render_short(ctx: JobContext) -> dict[str, Any]:
     settings = app.settings()
     _set_short(ctx.short_id, status="rendering", error=None)
     with session_scope() as s:
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         if sh is None:
             raise ShortForgeError("Short no longer exists.")
         row = current_timeline(s, ctx.short_id)
@@ -837,7 +847,7 @@ def render_short(ctx: JobContext) -> dict[str, Any]:
         r = s.get(Render, render_id)
         r.status, r.path, r.encoder = "done", str(result.path), result.encoder
         r.file_size, r.elapsed_s, r.finished_at = result.size, result.elapsed_s, utcnow()
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         previous = sh.output_path
         sh.output_path = str(result.path)
         sh.duration = round(result.duration, 3)
@@ -860,7 +870,7 @@ def render_short(ctx: JobContext) -> dict[str, Any]:
 def qc_short(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     with session_scope() as s:
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         row = current_timeline(s, ctx.short_id)
         tl = EditTimeline.model_validate(row.data)
         out = Path(sh.output_path or "")
@@ -902,7 +912,7 @@ def qc_short(ctx: JobContext) -> dict[str, Any]:
     if fixable and attempts < 2:
         new_tl, notes = apply_repairs(tl, sorted({i.repair for i in fixable}))
         with session_scope() as s:
-            sh = s.get(Short, ctx.short_id)
+            sh = need(s, Short, ctx.short_id, "Short")
             sh.repair_attempts = attempts + 1
             sh.qc_status, sh.qc_report = report.status, {**report.to_dict(), "repairs": notes}
             row = current_timeline(s, ctx.short_id)
@@ -914,7 +924,7 @@ def qc_short(ctx: JobContext) -> dict[str, Any]:
         return {"status": report.status, "repairs": notes}
     final_status = report.status
     with session_scope() as s:
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         sh.qc_status = final_status
         sh.qc_report = {**report.to_dict(), "repairs_applied": attempts}
         sh.fingerprint = {"dhash": fingerprint}
@@ -935,7 +945,7 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
     app = get_context()
     settings = app.settings()
     with session_scope() as s:
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         v = s.get(Video, sh.video_id)
         c = s.get(CandidateClip, sh.candidate_id) if sh.candidate_id else None
         row = current_timeline(s, ctx.short_id)
@@ -966,7 +976,7 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
     except Exception as exc:
         ctx.log(f"cover selection failed: {exc}", "warning")
     with session_scope() as s:
-        sh = s.get(Short, ctx.short_id)
+        sh = need(s, Short, ctx.short_id, "Short")
         # Prefer a title not already used by another Short from the same video.
         taken = {t.lower() for t in s.execute(select(Short.title).where(Short.video_id == sh.video_id,
                                                                         Short.id != sh.id)).scalars() if t}
@@ -1013,9 +1023,10 @@ def schedule_short(short_id: int, at: datetime | None = None, visibility: str | 
                                                   Upload.status.in_(("scheduled", "uploading", "processing", "uploaded")))).scalar()
         if existing:
             return existing.id
-        taken = [u.publish_at or u.scheduled_at for u in s.execute(
-            select(Upload).where(Upload.status.in_(("scheduled", "uploading", "processing", "uploaded")),
-                                 Upload.publish_at >= utcnow() - timedelta(days=2))).scalars() if (u.publish_at or u.scheduled_at)]
+        since = utcnow() - timedelta(days=2)
+        taken = [t for u in s.execute(select(Upload).where(Upload.status.in_(("scheduled", "uploading", "processing",
+                                                                             "uploaded")))).scalars()
+                 if (t := (u.publish_at or u.scheduled_at)) is not None and t >= since]
         now = utcnow()
         when = at or next_slot(now, strategy=ap.schedule_strategy, slots=ap.schedule_slots, taken=taken,
                                max_per_day=ap.max_uploads_per_day, min_gap_min=ap.min_upload_gap_min)
@@ -1198,6 +1209,20 @@ def install_model(ctx: JobContext) -> dict[str, Any]:
     app.notify("model_download", "Model installed", model_id)
     app.bus.publish("models.updated", {})
     return {"model": model_id}
+
+
+@job_handler("install_tool", resource="network", max_retries=2, priority=95, label="Install tool")
+def install_tool_job(ctx: JobContext) -> dict[str, Any]:
+    from shortforge.core.tools import TOOLS, install_tool
+
+    app = get_context()
+    name = ctx.payload["tool"]
+    folder = install_tool(name, progress=ctx.sub(0, 1), cancelled=lambda: ctx.cancel.cancelled)
+    ff.reset_caches()
+    app.hardware(refresh=True)
+    app.notify("model_download", f"{TOOLS[name].label} installed", str(folder))
+    app.bus.publish("tools.updated", {"tool": name})
+    return {"tool": name, "path": str(folder)}
 
 
 @job_handler("storage_cleanup", resource="io", max_retries=0, priority=10, label="Cleanup")

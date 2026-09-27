@@ -4,7 +4,10 @@ import { CheckCircle2, ExternalLink, KeyRound, Link2, Plug, RefreshCw, XCircle }
 import { type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge, Button, FieldRow, PageHeader, Segmented, Toggle } from "../components/ui";
+import { ToolsPanel } from "../components/ToolsPanel";
+import { CheckForUpdatesButton, ReleaseNotes, UpdateProgress, useUpdater } from "../components/UpdateBanner";
 import { api } from "../lib/api";
+import { appVersion } from "../lib/native";
 import { useToast } from "../lib/events";
 import { fmtBytes, fmtDateTime } from "../lib/format";
 import type { Settings as S } from "../lib/types";
@@ -16,6 +19,7 @@ const TABS: Tab[] = [
   { id: "editing", label: "Editing & captions", advanced: true }, { id: "render", label: "Render & audio", advanced: true },
   { id: "storage", label: "Storage" }, { id: "notifications", label: "Notifications" }, { id: "system", label: "GPU & queue", advanced: true },
   { id: "debug", label: "Debug tools" },
+  { id: "about", label: "About & updates" },
 ];
 
 function useSettings() {
@@ -130,6 +134,38 @@ function WeightsSection() {
   );
 }
 
+function AboutTab() {
+  const u = useUpdater();
+  const { data: health } = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const { data: storage } = useQuery({ queryKey: ["storage-loc"], queryFn: api.storageLocation });
+  const [app, setApp] = useState<string | null>(null);
+  useEffect(() => { void appVersion().then(setApp); }, []);
+  return (
+    <>
+      <Section title="ShortForge AI">
+        <div className="grid grid-2 small" style={{ gap: 8, marginTop: 6 }}>
+          <span className="muted">App version</span><span className="mono">{app ?? "browser"}</span>
+          <span className="muted">Engine version</span><span className="mono">{health?.version}</span>
+          <span className="muted">Data folder</span><span className="mono ellipsis" title={storage?.current}>{storage?.current}</span>
+          <span className="muted">Source code</span><a className="gradient-text strong" href="https://github.com/shreyjain7/shortforge-ai" target="_blank" rel="noreferrer">github.com/shreyjain7/shortforge-ai</a>
+        </div>
+      </Section>
+      <Section title="Updates" desc="ShortForge checks GitHub Releases for signed updates every few hours. Updates install in the background and keep your projects and settings.">
+        <div className="row" style={{ gap: 10, marginTop: 8 }}>
+          <CheckForUpdatesButton />
+          {u.phase === "uptodate" && <Badge color="green">You're up to date</Badge>}
+          {u.phase === "error" && <span className="small" style={{ color: "var(--danger)" }}>{u.error}</span>}
+          {u.phase === "available" && u.update && <Button size="sm" variant="primary" onClick={() => void u.install()}>Install {u.update.version}</Button>}
+        </div>
+        {(u.phase === "downloading" || u.phase === "installing") && <div style={{ marginTop: 12 }}><UpdateProgress /></div>}
+        {u.update?.notes && (u.phase === "available" || u.phase === "downloading") && (
+          <div className="card card-pad" style={{ marginTop: 12 }}><div className="strong small" style={{ marginBottom: 6 }}>What's new in {u.update.version}</div><ReleaseNotes notes={u.update.notes} /></div>
+        )}
+      </Section>
+    </>
+  );
+}
+
 function DebugTab() {
   const [level, setLevel] = useState<string>("");
   const { data: logs, refetch } = useQuery({ queryKey: ["logs", level], queryFn: () => api.logs(400, level || undefined) });
@@ -138,6 +174,9 @@ function DebugTab() {
   const ok = (b: boolean) => (b ? <CheckCircle2 size={14} color="var(--success)" /> : <XCircle size={14} color="var(--danger)" />);
   return (
     <>
+      <Section title="External tools" desc="Installed automatically into the ShortForge data folder when missing.">
+        <ToolsPanel />
+      </Section>
       <Section title="Dependencies">
         {deps && (
           <div className="grid grid-2 small" style={{ gap: 8 }}>
@@ -420,6 +459,7 @@ export default function Settings() {
             </Section>
           )}
           {tab === "debug" && <DebugTab />}
+          {tab === "about" && <AboutTab />}
           {!advanced && <div className="tiny faint" style={{ marginTop: 6 }}><Plug size={11} /> Switch to Advanced mode for models, prompts, ranking, captions, reframing, codec and GPU controls.</div>}
         </div>
       </div>

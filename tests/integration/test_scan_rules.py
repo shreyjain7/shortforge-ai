@@ -89,3 +89,14 @@ def test_channel_rules_and_no_redownload(ctx, monkeypatch) -> None:
         assert [v.youtube_id for v in queued] == ["NEWLONG0001"]  # newest first, limited per scan
     again = _run_scan(ctx, sid)
     assert again["discovered"] == 0 and again["queued"] == 0  # already-known videos are never re-added
+
+
+def test_job_for_deleted_record_stops_cleanly(ctx) -> None:
+    from shortforge.core.errors import EntityGone
+    from shortforge.workers.queue import REGISTRY, JobContext
+
+    job_id = ctx.queue.enqueue("render_short", short_id=999)
+    jc = JobContext(ctx.queue, job_id, "render_short", {}, video_id=None, short_id=999, source_id=None, attempt=0)
+    with pytest.raises(EntityGone) as exc:
+        REGISTRY["render_short"].handler(jc)
+    assert "deleted" in exc.value.message

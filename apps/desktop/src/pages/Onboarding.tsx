@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Cpu, Download, HardDrive, L
 import { type ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge, Button, Progress, Segmented } from "../components/ui";
+import { ToolsPanel } from "../components/ToolsPanel";
 import { api } from "../lib/api";
 import { useEvents, useToast } from "../lib/events";
 import { fmtBytes } from "../lib/format";
@@ -98,6 +99,12 @@ export default function Onboarding() {
                   <Check_ ok={deps?.ollama.running} label="Ollama (local LLM)" detail={deps?.ollama.running ? `${deps.ollama.models.length} models installed` : deps?.ollama.installed ? "installed — will be started automatically" : <>Optional · <a href="https://ollama.com" target="_blank" rel="noreferrer" className="gradient-text">ollama.com</a></>} />
                   <Check_ ok={deps ? deps.js_runtime.length > 0 : undefined} label="JavaScript runtime" detail={deps?.js_runtime.join(", ") || "Install Node.js for reliable YouTube downloads"} />
                   {hw?.notes?.map((n: string) => <div key={n} className="tiny faint" style={{ marginTop: 8 }}>{n}</div>)}
+                  {deps && (!deps.ffmpeg.ok || deps.js_runtime.length === 0) && (
+                    <div className="card card-pad" style={{ marginTop: 14 }}>
+                      <div className="strong small" style={{ marginBottom: 8 }}>Install missing tools</div>
+                      <ToolsPanel compact />
+                    </div>
+                  )}
                 </div>
               )}
               {step === 2 && hw && (

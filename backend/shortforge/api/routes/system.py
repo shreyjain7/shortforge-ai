@@ -156,6 +156,47 @@ def dependencies() -> dict[str, Any]:
     }
 
 
+@router.post("/system/shutdown")
+async def shutdown() -> dict[str, Any]:
+    """Graceful stop (used by the desktop shell before upgrading the engine)."""
+    import os
+    import signal
+
+    loop = asyncio.get_running_loop()
+    loop.call_later(0.3, lambda: os.kill(os.getpid(), signal.SIGINT if os.name != "nt" else signal.SIGTERM))
+    return {"ok": True}
+
+
+@router.get("/system/tools")
+def tools_status() -> list[dict[str, Any]]:
+    from shortforge.core.tools import TOOLS, installed_tool
+    from shortforge.engines.youtube.ytdlp_backend import js_runtime_options
+
+    found = ff.find_ffmpeg()
+    js = js_runtime_options(get_context().settings().youtube.js_runtime)
+    status = {"ffmpeg": bool(found), "deno": bool(js)}
+    return [{"name": t.name, "label": t.label, "size_mb": t.approx_mb, "available": status[t.name],
+             "managed": installed_tool(t.name) is not None,
+             "detail": (found[0] if t.name == "ffmpeg" and found else ", ".join(js.keys()) if t.name == "deno" else None)}
+            for t in TOOLS.values()]
+
+
+@router.post("/system/tools/{name}/install")
+def install_tool(name: str) -> dict[str, Any]:
+    from fastapi import HTTPException
+
+    from shortforge.core.tools import TOOLS
+
+    if name not in TOOLS:
+        raise HTTPException(404, "Unknown tool")
+    return {"job_id": get_context().queue.enqueue("install_tool", {"tool": name}, dedupe_key=f"tool:{name}")}
+
+
+@router.post("/system/cleanup")
+def cleanup_now() -> dict[str, Any]:
+    return {"job_id": get_context().queue.enqueue("storage_cleanup", priority=80, dedupe_key="cleanup")}
+
+
 @router.get("/system/logs")
 def logs(lines: int = 300, level: str | None = None) -> list[dict]:
     return tail_log(get_context().paths.logs, min(lines, 2000), level)

@@ -348,9 +348,9 @@ class JobQueue:
             result = spec.handler(ctx) or {}
             ctx.flush_followups()
             ctx.log(f"finished in {time.monotonic() - t0:.1f}s")
-        except JobCancelled:
-            status, error = "cancelled", "Cancelled"
-            ctx.log("cancelled", "warning")
+        except JobCancelled as exc:
+            status, error = "cancelled", exc.message
+            ctx.log(exc.message, "warning")
         except DependencyMissing as exc:
             status, error, detail = "failed", exc.message, exc.detail
             ctx.log(exc.message, "error")

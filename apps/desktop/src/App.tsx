@@ -1,10 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { EngineSetup } from "./components/EngineSetup";
+import { UpdateBanner, UpdaterProvider } from "./components/UpdateBanner";
 import { Sidebar, Toasts, Topbar } from "./components/Layout";
 import { api } from "./lib/api";
 import { EventsProvider } from "./lib/events";
+import { engineStatus, type EngineStatus, startEngine } from "./lib/native";
 import Analytics from "./pages/Analytics";
 import Candidates from "./pages/Candidates";
 import Dashboard from "./pages/Dashboard";
@@ -40,6 +44,26 @@ function Booting({ error }: { error?: boolean }) {
 }
 
 export default function App() {
+  // Desktop shell: make sure the local engine is installed and current before anything else.
+  const [engine, setEngine] = useState<EngineStatus | null | undefined>(undefined);
+  useEffect(() => {
+    engineStatus().then(setEngine).catch(() => setEngine(null));
+  }, []);
+  const onReady = useCallback(() => {
+    void startEngine().catch(() => undefined);
+    setEngine((e) => (e ? { ...e, needs_setup: false } : e));
+  }, []);
+  if (engine === undefined) return <Booting />;
+  if (engine?.needs_setup) return <EngineSetup status={engine} onReady={onReady} />;
+  return (
+    <UpdaterProvider>
+      <Studio />
+      <UpdateBanner />
+    </UpdaterProvider>
+  );
+}
+
+function Studio() {
   const loc = useLocation();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, retry: true, retryDelay: 1200, refetchInterval: (q) => (q.state.data ? 30000 : 1500) });
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, enabled: !!health.data });

@@ -39,15 +39,38 @@ no Redis/Docker.
   semantic timelines, candidates, Shorts library, non-destructive multi-track editor with live preview,
   queue, schedule, analytics, templates, model manager, first-run wizard.
 
+## Download
+
+**[⬇ Download the latest Windows installer](https://github.com/shreyjain7/shortforge-ai/releases/latest)**
+(`ShortForge-AI_<version>_x64-setup.exe`, ~30 MB).
+
+1. Run the installer. It installs for your user only — no admin rights needed. Windows SmartScreen may
+   warn because the installer is not code-signed with a paid certificate: click **More info → Run anyway**.
+2. On first launch ShortForge sets up its local AI engine (Python 3.12 + dependencies, ~2–3 GB, a few
+   minutes, progress shown step by step). This happens once.
+3. The welcome wizard checks your hardware, installs FFmpeg and a JavaScript runtime with one click if
+   they are missing, and lets you choose which AI models to download.
+4. Optional: install [Ollama](https://ollama.com) for the best clip finding and titles.
+
+### Automatic updates
+
+ShortForge checks GitHub for a new release shortly after starting and every six hours. When one is
+available a banner shows the version and release notes; **Update now** downloads it with a live
+progress bar (MB downloaded / total, %), installs it and restarts the app. The engine is upgraded
+automatically on the next launch. Your data, models and settings are kept. Updates are signed, and the
+app refuses any update whose signature does not match. You can also check manually in
+**Settings → About**.
+
 ## Requirements
 
-- Windows 10/11 (the engine also runs on Linux/macOS; the desktop build targets Windows)
+- Windows 10/11 x64 (the engine also runs on Linux/macOS from source)
 - NVIDIA GPU with 6–8 GB+ VRAM recommended (CPU-only works, slower)
-- 16 GB RAM recommended
-- FFmpeg (with libass), Node.js (used by yt-dlp for YouTube), Python 3.12 via `uv`, Ollama (optional
-  but recommended), Rust (only to build the native shell)
+- 16 GB RAM recommended, ~15 GB free disk for the engine and models
+- Everything else (Python, FFmpeg, JS runtime, models) is installed by the app itself
 
-## Install
+## Build from source
+
+Needs Python 3.12 via `uv`, Node.js 20+, Rust (for the native shell) and FFmpeg.
 
 ```powershell
 git clone https://github.com/shreyjain7/shortforge-ai.git
@@ -62,6 +85,14 @@ Models are **not** downloaded automatically: the first-run wizard shows each mod
 what you choose (recommended for 8 GB GPUs: Whisper large-v3-turbo, Qwen 2.5 7B, YuNet).
 
 Without the native shell, the full UI is served at <http://127.0.0.1:8756>.
+
+### Making a release
+
+Bump the version in `pyproject.toml`, `backend/shortforge/__init__.py`, `apps/desktop/package.json`,
+`apps/desktop/src-tauri/Cargo.toml` and `tauri.conf.json`, add a `CHANGELOG.md` entry, then either push a
+`v<version>` tag (GitHub Actions builds and publishes it; needs the `TAURI_SIGNING_PRIVATE_KEY` secret)
+or run `python scripts/release.py --publish` locally. The release contains the installer, its signature
+and `latest.json`, which installed apps poll for updates.
 
 ## Headless use
 

@@ -37,6 +37,14 @@ def js_runtime_options(preferred: str = "node") -> dict[str, dict]:
         path = shutil.which(runtime)
         if path:
             return {runtime: {"path": path}}
+    try:  # managed Deno installed by ShortForge
+        from shortforge.core.tools import installed_tool
+
+        folder = installed_tool("deno")
+        if folder is not None:
+            return {"deno": {"path": str(folder / "deno.exe")}}
+    except Exception:
+        pass
     return {}
 
 

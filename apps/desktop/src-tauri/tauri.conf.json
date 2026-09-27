@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ShortForge AI",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "ai.shortforge.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -23,14 +23,46 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8756 https:; media-src 'self' blob: http://127.0.0.1:8756; font-src 'self' data: http://127.0.0.1:8756; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8756"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:8756 https:; media-src 'self' blob: http://127.0.0.1:8756; font-src 'self' data: http://127.0.0.1:8756; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:8756 https://github.com https://objects.githubusercontent.com https://api.github.com"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "category": "Video",
     "shortDescription": "Local autonomous AI Shorts studio",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "resources/uv.exe": "resources/uv.exe",
+      "resources/engine/": "resources/engine/"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "publisher": "ShortForge",
+    "homepage": "https://github.com/shreyjain7/shortforge-ai"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRDNEFGRENERkUyMDYzN0EKUldSNll5RCt6ZjFLVEdMbEZuQjZFeXNFWDJEYllpZkFQS1BYcmUwMU9ZcWtsRHNzSmlCdGRsZkkK",
+      "endpoints": [
+        "https://github.com/shreyjain7/shortforge-ai/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

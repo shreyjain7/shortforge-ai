@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowRight, Clapperboard, Download, Film, HardDrive, Layers, Plus, Radio, Send, Sparkles, UploadCloud } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { GetStarted } from "../components/GetStarted";
 import { PageHeader, Progress, Skeleton, Stat, StatusBadge, stagger, Button, Empty, ScoreRing } from "../components/ui";
 import { api, mediaUrl } from "../lib/api";
 import { useEvents } from "../lib/events";
@@ -36,6 +37,7 @@ export default function Dashboard() {
           <Button variant="primary" onClick={() => nav("/sources?add=1")}><Plus size={15} /> Add source</Button>
         </>}
       />
+      <GetStarted />
       <div className="grid grid-4" style={{ marginBottom: 14 }}>
         {cards.map((s, i) => (
           <motion.div key={s.label} {...stagger(i)}>

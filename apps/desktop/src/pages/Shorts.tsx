@@ -1,17 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Clapperboard, Play } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, Check, Clapperboard, Play, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Empty, PageHeader, Progress, ScoreRing, Segmented, Skeleton, StatusBadge, stagger } from "../components/ui";
+import { Button, Empty, PageHeader, Progress, ScoreRing, Segmented, Skeleton, StatusBadge, stagger } from "../components/ui";
 import { api, mediaUrl } from "../lib/api";
-import { useEvents } from "../lib/events";
+import { useEvents, useToast } from "../lib/events";
 import { fmtDuration, relTime } from "../lib/format";
 import type { Short } from "../lib/types";
 
 const STATUSES = ["", "draft", "rendering", "review", "ready", "scheduled", "uploading", "published", "failed"];
 
-export function ShortCard({ s, i }: { s: Short; i: number }) {
+export function ShortCard({ s, i, selected, onSelect }: { s: Short; i: number; selected?: boolean; onSelect?: (on: boolean) => void }) {
   const nav = useNavigate();
   const { progress } = useEvents();
   const [hover, setHover] = useState(false);
@@ -31,6 +31,14 @@ export function ShortCard({ s, i }: { s: Short; i: number }) {
         )}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.45) 0%, transparent 25%, transparent 60%, rgba(0,0,0,.75) 100%)", pointerEvents: "none" }} />
         <div style={{ position: "absolute", top: 8, left: 8 }}><StatusBadge status={s.status} /></div>
+        {onSelect && (
+          <button onClick={(e) => { e.stopPropagation(); onSelect(!selected); }} title="Select"
+            style={{ position: "absolute", bottom: 34, right: 8, width: 24, height: 24, borderRadius: 7, cursor: "pointer",
+              border: selected ? "none" : "2px solid rgba(255,255,255,.7)", background: selected ? "var(--accent)" : "rgba(0,0,0,.35)",
+              display: "grid", placeItems: "center", opacity: selected || hover ? 1 : 0, transition: "opacity .15s" }}>
+            {selected && <Check size={14} color="#fff" />}
+          </button>
+        )}
         <div style={{ position: "absolute", top: 6, right: 6 }}><ScoreRing score={s.score} size={34} stroke={3} /></div>
         {s.qc_status && s.qc_status !== "PASS" && <div style={{ position: "absolute", top: 44, right: 8 }}><StatusBadge status={s.qc_status} /></div>}
         <div style={{ position: "absolute", left: 10, right: 10, bottom: 10 }}>
@@ -51,6 +59,26 @@ export default function Shorts() {
   const [source, setSource] = useState<string>("");
   const [minScore, setMinScore] = useState(0);
   const [maxDur, setMaxDur] = useState(180);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
+  const toast = useToast();
+  const bulk = useMutation({
+    mutationFn: async (action: "private" | "schedule" | "delete") => {
+      const ids = [...selected];
+      const results = await Promise.allSettled(ids.map((id) =>
+        action === "delete" ? api.deleteShort(id, false)
+          : action === "private" ? api.scheduleShort(id, new Date().toISOString(), "private") : api.scheduleShort(id)));
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+      return { ok: ids.length - failed.length, failed: failed.map((f) => String(f.reason?.message ?? f.reason)) };
+    },
+    onSuccess: (r, action) => {
+      const verb = action === "delete" ? "deleted" : action === "private" ? "queued for private upload" : "scheduled";
+      toast({ title: `${r.ok} Short${r.ok === 1 ? "" : "s"} ${verb}`, body: r.failed[0], level: r.failed.length ? "warning" : "success" });
+      setSelected(new Set());
+      void qc.invalidateQueries({ queryKey: ["shorts"] });
+      void qc.invalidateQueries({ queryKey: ["uploads"] });
+    },
+  });
   const { data: sources } = useQuery({ queryKey: ["sources"], queryFn: api.sources });
   const { data, isLoading } = useQuery({
     queryKey: ["shorts", status, sort, source, minScore, maxDur],
@@ -59,7 +87,15 @@ export default function Shorts() {
   });
   return (
     <div className="page">
-      <PageHeader title="Shorts" subtitle={`${data?.total ?? 0} Shorts`} />
+      <PageHeader title="Shorts" subtitle={`${data?.total ?? 0} Shorts`} actions={selected.size > 0 ? (
+        <>
+          <span className="small muted" style={{ alignSelf: "center" }}>{selected.size} selected</span>
+          <Button onClick={() => setSelected(new Set())} variant="ghost">Clear</Button>
+          <Button onClick={() => bulk.mutate("private")} loading={bulk.isPending}><Upload size={14} /> Upload privately</Button>
+          <Button onClick={() => bulk.mutate("schedule")} loading={bulk.isPending}><CalendarClock size={14} /> Schedule</Button>
+          <Button variant="danger" onClick={() => confirm(`Delete ${selected.size} Shorts? Rendered files stay on disk.`) && bulk.mutate("delete")}><Trash2 size={14} /></Button>
+        </>
+      ) : (data?.items.length ? <Button variant="ghost" onClick={() => setSelected(new Set(data.items.filter((s) => ["ready", "review"].includes(s.status)).map((s) => s.id)))}>Select all ready</Button> : undefined)} />
       <div className="toolbar">
         {STATUSES.map((st) => (
           <button key={st} className={`chip ${status === st ? "on" : ""}`} onClick={() => setStatus(st)}>
@@ -88,7 +124,10 @@ export default function Shorts() {
       {isLoading && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))" }}>{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} h={300} r={14} />)}</div>}
       {data?.items.length === 0 && <div className="card"><Empty icon={<Clapperboard size={22} />} title="No Shorts match">Generated Shorts appear here as soon as they render.</Empty></div>}
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 18 }}>
-        {data?.items.map((s, i) => <ShortCard key={s.id} s={s} i={i} />)}
+        {data?.items.map((s, i) => (
+          <ShortCard key={s.id} s={s} i={i} selected={selected.has(s.id)}
+            onSelect={(on) => setSelected((prev) => { const next = new Set(prev); if (on) next.add(s.id); else next.delete(s.id); return next; })} />
+        ))}
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import type { ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useEvents } from "../lib/events";
+import { useUpdater } from "./UpdateBanner";
 
 const NAV: { to: string; label: string; icon: ReactNode; section?: string; countKey?: string }[] = [
   { to: "/", label: "Dashboard", icon: <LayoutDashboard size={16} /> },
@@ -141,6 +142,7 @@ export function Sidebar() {
         );
       })}
       <div className="sidebar-footer">
+        <SidebarVersion />
         <NavLink to="/settings?tab=autopilot" className="card" style={{ display: "block", padding: "10px 12px", borderRadius: 12 }}>
           <div className="row">
             <span style={{ width: 8, height: 8, borderRadius: 8, background: autopilot ? "var(--success)" : "var(--text-3)",
@@ -154,6 +156,20 @@ export function Sidebar() {
         </NavLink>
       </div>
     </aside>
+  );
+}
+
+function SidebarVersion() {
+  const nav = useNavigate();
+  const u = useUpdater();
+  const { data: health } = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const hasUpdate = u.phase === "available" || u.phase === "downloading";
+  return (
+    <button className="row tiny faint hide-sm" onClick={() => nav("/settings?tab=about")}
+      style={{ background: "none", border: "none", cursor: "pointer", padding: "0 6px 10px", gap: 6, color: "var(--text-3)" }}>
+      <span>v{health?.version ?? "…"}</span>
+      {hasUpdate && <span className="badge violet" style={{ height: 17 }}>Update {u.update?.version}</span>}
+    </button>
   );
 }
 

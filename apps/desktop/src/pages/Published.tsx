@@ -30,7 +30,10 @@ export default function Published() {
                     <td className="mono">{fmtCompact(st?.views)}</td>
                     <td className="mono">{fmtCompact(st?.likes)}</td>
                     <td className="mono">{fmtCompact(st?.comments)}</td>
-                    <td>{u.url && <a href={u.url} target="_blank" rel="noreferrer" className="btn sm ghost"><ExternalLink size={13} /> YouTube</a>}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {u.url && <a href={u.url} target="_blank" rel="noreferrer" className="btn sm ghost"><ExternalLink size={13} /> Watch</a>}
+                      {u.youtube_video_id && <a href={`https://studio.youtube.com/video/${u.youtube_video_id}/edit`} target="_blank" rel="noreferrer" className="btn sm ghost">Studio</a>}
+                    </td>
                   </tr>
                 );
               })}

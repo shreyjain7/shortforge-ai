@@ -23,6 +23,13 @@ class JobCancelled(ShortForgeError):
         super().__init__("Job was cancelled")
 
 
+class EntityGone(JobCancelled):
+    """The record a job works on was deleted meanwhile: stop quietly with a readable reason."""
+
+    def __init__(self, what: str) -> None:
+        ShortForgeError.__init__(self, f"Stopped: the {what} was deleted.")
+
+
 class DependencyMissing(ShortForgeError):
     """A required tool/model is not installed (e.g. FFmpeg, a Whisper model)."""
 

@@ -1075,7 +1075,10 @@ def upload_short(ctx: JobContext) -> dict[str, Any]:
             u.status = "scheduled" if getattr(exc, "retryable", False) else "failed"
             u.error = getattr(exc, "message", str(exc))[:500]
             sh = s.get(Short, u.short_id)
-            sh.status = "scheduled" if u.status == "scheduled" else "failed"
+            # An upload problem doesn't make the rendered Short bad: keep it ready for another attempt.
+            sh.status = "scheduled" if u.status == "scheduled" else "ready"
+            if u.status == "failed":
+                sh.error = f"Upload failed: {u.error}"
         if not getattr(exc, "retryable", False):
             app.notify("upload_failed", "Upload failed", getattr(exc, "message", str(exc))[:200], level="error",
                        link=f"/shorts/{ctx.short_id}")

@@ -114,6 +114,15 @@ def fonts() -> list[str]:
     return sorted(p.name for p in fonts_dir().glob("*.ttf"))
 
 
+@router.get("/templates/fonts/{name}")
+def font_file(name: str) -> FileResponse:
+    """Serve bundled caption fonts so the editor's live preview uses the exact typefaces."""
+    path = (fonts_dir() / name).resolve()
+    if path.parent != fonts_dir().resolve() or path.suffix.lower() != ".ttf" or not path.exists():
+        raise HTTPException(404, "Font not found")
+    return FileResponse(path, media_type="font/ttf", headers={"Cache-Control": "max-age=86400"})
+
+
 @router.get("/templates/captions/{name}/preview.png")
 def caption_preview(name: str, s: Session = Depends(get_session)) -> FileResponse:
     """Render the preset with libass over a neutral frame (exactly what the renderer produces)."""

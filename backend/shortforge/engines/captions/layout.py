@@ -128,9 +128,14 @@ def pop_growth(preset: CaptionPreset) -> float:
     return max(0.0, active * max(1.0, preset.emphasis_scale) - 1.0)
 
 
+POP_RESERVE = 0.7
+"""Share of the active word's half-growth reserved as extra spacing. The normal word space absorbs
+the rest, so a popped word never touches its neighbour while idle pages don't look loose."""
+
+
 def pair_gap(w_a: float, w_b: float, space: float, grow: float) -> float:
     """Gap between neighbours so a scaled-up word never collides with the next one."""
-    return space + grow * max(w_a, w_b) / 2
+    return space + POP_RESERVE * grow * max(w_a, w_b) / 2
 
 
 def line_width(widths: list[float], idxs: list[int], space: float, grow: float) -> float:

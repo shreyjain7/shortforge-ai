@@ -119,8 +119,9 @@ def sanitize_title(title: str, clip_text: str) -> str:
 
 
 def evaluate(llm: LLMProvider, c: Candidate, sentences: list[Sentence], video_title: str,
-             channel: str | None) -> dict[str, Any]:
-    data = llm.chat_json(SYSTEM, build_prompt(c, sentences, video_title, channel), schema=SCHEMA, max_tokens=600)
+             channel: str | None, system: str | None = None) -> dict[str, Any]:
+    data = llm.chat_json(system or SYSTEM, build_prompt(c, sentences, video_title, channel), schema=SCHEMA,
+                         max_tokens=600)
     clip_text = c.text
     result: dict[str, Any] = {}
     for m in LLM_METRICS:

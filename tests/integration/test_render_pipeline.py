@@ -71,6 +71,37 @@ def test_render_produces_valid_vertical_short(source_video: Path, tmp_path: Path
     assert report.metrics["integrated_lufs"] is not None and abs(report.metrics["integrated_lufs"] + 14) < 2.5
 
 
+def test_render_with_broll_music_split_and_repairs(source_video: Path, tmp_path: Path) -> None:
+    """Exercise B-roll (full + PiP), music with sidechain ducking, split layout and QC repairs."""
+    from shortforge.engines.editing.timeline import BrollInsert, CropKey, LayoutSegment, MusicTrack
+    from shortforge.engines.quality_control.qc import apply_repairs
+
+    broll = tmp_path / "broll.mp4"
+    music = tmp_path / "music.wav"
+    subprocess.run([ff.ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "mandelbrot=s=640x360:r=30",
+                    "-t", "3", "-pix_fmt", "yuv420p", str(broll)], check=True)
+    subprocess.run([ff.ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:sample_rate=48000:d=10", str(music)], check=True)
+    tl = _timeline(source_video)
+    tl.layouts = [LayoutSegment(start=0, end=2.0, layout="split",
+                                secondary=[CropKey(t=0, cx=0.8, cy=0.5, zoom=1.35), CropKey(t=2, cx=0.8, cy=0.5, zoom=1.35)]),
+                  LayoutSegment(start=2.0, end=4.5, layout="crop")]
+    tl.crop = [CropKey(t=0, cx=0.2, cy=0.5, zoom=1.35), CropKey(t=2.0, cx=0.2, cy=0.5, zoom=1.35),
+               CropKey(t=2.01, cx=0.5), CropKey(t=4.5, cx=0.5)]
+    tl.broll = [BrollInsert(path=str(broll), start=0.5, end=1.5, mode="pip"),
+                BrollInsert(path=str(broll), start=2.5, end=3.5, mode="full")]
+    tl.music = MusicTrack(path=str(music), volume_db=-18, duck_db=-10)
+    tl.enhance.sharpen = True
+    tl.enhance.vignette = True
+    repaired, notes = apply_repairs(tl, ["shrink_captions"])
+    assert notes
+    out = tmp_path / "rich.mp4"
+    result = render_timeline(repaired, out, tmp_path / "work2", options=RenderOptions(profile="FAST", encoder="cpu"))
+    info = ff.probe(out)
+    assert (info.width, info.height) == (1080, 1920) and info.has_audio
+    assert abs(result.duration - tl.duration) < 0.15
+
+
 def test_qc_detects_wrong_dimensions(source_video: Path, tmp_path: Path) -> None:
     tl = _timeline(source_video)
     tl.width, tl.height = 720, 1280  # expect something different from the real file

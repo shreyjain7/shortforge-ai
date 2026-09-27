@@ -56,6 +56,9 @@ class CaptionWord(BaseModel):
     end: float
     emphasis: bool = False
     speaker: int | None = None
+    src_start: float | None = None
+    """Source-time anchor so manual range edits can re-time captions exactly."""
+    src_end: float | None = None
 
 
 class CaptionTrack(BaseModel):
@@ -132,6 +135,7 @@ class EditTimeline(BaseModel):
     captions: CaptionTrack = Field(default_factory=CaptionTrack)
     overlays: list[TextOverlay] = Field(default_factory=list)
     broll: list[BrollInsert] = Field(default_factory=list)
+    broll_suggestions: list[BrollInsert] = Field(default_factory=list)
     music: MusicTrack | None = None
     audio: AudioSpec = Field(default_factory=AudioSpec)
     enhance: EnhanceSpec = Field(default_factory=EnhanceSpec)

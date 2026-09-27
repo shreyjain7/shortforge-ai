@@ -75,15 +75,20 @@ def test_layout_breaks_on_sentence_end_and_pause() -> None:
 def test_active_word_growth_never_overlaps_neighbours() -> None:
     cfg = LayoutConfig(1080, 1920)
     preset = get_preset("Bold")
-    pages = layout_pages(_words(["FINANCING", "PROGRAM", "A"]), preset, cfg, clip_duration=5)
+    pages = layout_pages(_words(["THE", "PROGRAM", "A", "BIT", "MORE"]), preset, cfg, clip_duration=5)
+    grow = preset.active_scale - 1
+    checked = 0
     for page in pages:
         by_line: dict[int, list] = {}
         for w in page.words:
             by_line.setdefault(w.line, []).append(w)
         for ws in by_line.values():
             for a, b in itertools.pairwise(ws):
-                grow = preset.active_scale - 1
-                assert a.x + a.width / 2 * (1 + grow) <= b.x - b.width / 2 * (1 + grow) + 1
+                # Only one word is active at a time: its popped glyph box must not reach the neighbour.
+                assert a.x + a.width / 2 * (1 + grow) < b.x - b.width / 2
+                assert b.x - b.width / 2 * (1 + grow) > a.x + a.width / 2
+                checked += 1
+    assert checked > 0
 
 
 def test_safe_area_update_changes_max_width() -> None:

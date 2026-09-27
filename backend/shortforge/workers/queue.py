@@ -184,8 +184,11 @@ class JobQueue:
         return count
 
     def wake(self) -> None:
-        if self._loop and self._wake:
-            self._loop.call_soon_threadsafe(self._wake.set)
+        """Nudge the scheduler (safe from any thread; a no-op when the loop is stopped)."""
+        loop = self._loop
+        if loop is not None and self._wake is not None and not loop.is_closed():
+            with contextlib.suppress(RuntimeError):
+                loop.call_soon_threadsafe(self._wake.set)
 
     # ------------------------------------------------------------------ API
     def enqueue(self, job_type: str, payload: dict[str, Any] | None = None, *, priority: int | None = None,

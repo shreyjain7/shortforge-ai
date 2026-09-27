@@ -150,7 +150,7 @@ class SafeAreaSettings(BaseModel):
 class AutopilotSettings(BaseModel):
     enabled: bool = False
     scan_interval_min: int = 60
-    min_clip_score: float = 75.0
+    min_clip_score: float = 70.0
     max_clips_per_video: int = 3
     max_uploads_per_day: int = 4
     min_upload_gap_min: int = 90
@@ -207,6 +207,14 @@ class QueueSettings(BaseModel):
     max_retries: int = 3
 
 
+class PromptSettings(BaseModel):
+    """Optional overrides for the local-LLM system prompts (empty = built-in prompt)."""
+
+    clip_ranker: str = ""
+    timeline: str = ""
+    metadata: str = ""
+
+
 class AppSettings(BaseModel):
     general: GeneralSettings = Field(default_factory=GeneralSettings)
     youtube: YouTubeSettings = Field(default_factory=YouTubeSettings)
@@ -227,7 +235,9 @@ class AppSettings(BaseModel):
     learning: LearningSettings = Field(default_factory=LearningSettings)
     gpu: GPUSettings = Field(default_factory=GPUSettings)
     queue: QueueSettings = Field(default_factory=QueueSettings)
+    prompts: PromptSettings = Field(default_factory=PromptSettings)
     ffmpeg_path: str | None = None
+    min_free_disk_gb: float = 3.0
 
 
 def deep_merge(base: dict, patch: dict) -> dict:

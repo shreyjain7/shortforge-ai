@@ -89,6 +89,21 @@ PRIORITY = {"scan": 60, "download": 55, "prepare": 58, "transcribe": 62, "scenes
             "find": 66, "render": 70, "qc": 72, "metadata": 74, "upload": 80}
 
 
+def ensure_disk_space(folder: Path, min_gb: float) -> None:
+    """Pause work (retry later) instead of failing midway when the data drive is nearly full."""
+    try:
+        free_gb = shutil.disk_usage(folder).free / 1024**3
+    except OSError:
+        return
+    if free_gb < min_gb:
+        from shortforge.core.errors import RetryableError
+
+        get_context().notify("render_failed", "Low disk space",
+                             f"Only {free_gb:.1f} GB free on the ShortForge drive. Free up space or change the storage "
+                             "location; work will resume automatically.", level="warning")
+        raise RetryableError(f"Low disk space ({free_gb:.1f} GB free, {min_gb:.0f} GB required).")
+
+
 def _set_video(video_id: int, **fields: Any) -> None:
     with session_scope() as s:
         v = s.get(Video, video_id)
@@ -130,6 +145,8 @@ def _upsert_channel(s, info) -> None:  # type: ignore[no-untyped-def]
 def _eligible(meta: VideoMeta, src: Source, now: datetime) -> tuple[bool, str]:
     if meta.is_live_or_upcoming:
         return False, "live or upcoming"
+    if src.kind == SourceKind.VIDEO:
+        return True, ""  # a directly pasted video is explicit intent: no age/duration windows
     if meta.duration is not None:
         if src.min_duration_s and meta.duration < src.min_duration_s:
             return False, f"shorter than {src.min_duration_s:.0f}s"
@@ -274,6 +291,7 @@ def download_video(ctx: JobContext) -> dict[str, Any]:
         dl_id = dl.id
         v.download_status = "downloading"
         v.stage = "download"
+    ensure_disk_space(app.paths.sources, settings.min_free_disk_gb)
     provider = app.source_provider(settings)
 
     def on_progress(p) -> None:  # type: ignore[no-untyped-def]
@@ -483,7 +501,8 @@ def analyze_video(ctx: JobContext) -> dict[str, Any]:
         ctx.progress(0.1, f"Understanding content with {llm.model}")
         with mm.gpu_session("llm"):
             mm.load(f"llm:{llm.model}", lambda: llm, vram_mb=5500, unload=lambda p: p.unload())
-            segments = llm_timeline(llm, sentences, title, progress=ctx.sub(0.1, 0.97), feats=feats)
+            segments = llm_timeline(llm, sentences, title, progress=ctx.sub(0.1, 0.97), feats=feats,
+                                    system=settings.prompts.timeline or None)
             if settings.llm.unload_after_use:
                 mm.unload(f"llm:{llm.model}")
         source = "llm"
@@ -544,7 +563,8 @@ def find_clips_job(ctx: JobContext) -> dict[str, Any]:
                           timeline, ppath, existing)
     cfg = FinderConfig(min_duration=eff["min_duration"], max_duration=eff["max_duration"],
                        target_duration=settings.clips.target_duration, llm_candidates=settings.llm.max_candidates,
-                       duplicate_threshold=settings.clips.duplicate_threshold, weights=weights)
+                       duplicate_threshold=settings.clips.duplicate_threshold, weights=weights,
+                       ranker_prompt=settings.prompts.clip_ranker or None)
     llm = app.llm(settings)
     from shortforge.core.gpu import models as mm
 
@@ -693,8 +713,30 @@ def _build_auto_timeline(short_id: int, *, reframe_override: dict | None = None)
     spec = ClipSpec(source_path=src_path, analysis_video=ppath or src_path, source_width=width, source_height=height,
                     source_fps=fps or 30.0, start=start, end=end, words=words, scene_cuts=cuts,
                     speech=audio.speech if audio else [], keywords=keywords, hook_text=hook_text, idf=idf,
-                    caption_preset=preset, reframe_mode=rmode)
+                    caption_preset=preset, reframe_mode=rmode,
+                    broll_clips=_broll_library(settings), music_tracks=_music_library(settings))
     return build_timeline(spec, settings, app.face_detector())
+
+
+def _broll_library(settings) -> list:  # type: ignore[no-untyped-def]
+    if not settings.broll.enabled or not settings.broll.library_dir or not Path(settings.broll.library_dir).is_dir():
+        return []
+    from shortforge.engines.editing.broll import index_library, ollama_vision_captioner
+    from shortforge.engines.llm.providers import OllamaProvider
+
+    captioner = None
+    if settings.llm.provider == "ollama":
+        installed = OllamaProvider("", settings.llm.ollama_url).list_models()
+        captioner = ollama_vision_captioner(settings.llm.ollama_url, installed)
+    return index_library(Path(settings.broll.library_dir), get_context().paths.cache / "broll_index.json", captioner)
+
+
+def _music_library(settings) -> list:  # type: ignore[no-untyped-def]
+    if not settings.music.enabled or not settings.music.library_dir or not Path(settings.music.library_dir).is_dir():
+        return []
+    from shortforge.engines.audio.music import index_library
+
+    return index_library(Path(settings.music.library_dir), get_context().paths.cache / "music_index.json")
 
 
 def caption_preset_for(tl: EditTimeline):  # type: ignore[no-untyped-def]
@@ -736,6 +778,7 @@ def render_short(ctx: JobContext) -> dict[str, Any]:
         tl_data = row.data if row is not None and not ctx.payload.get("rebuild") else None
         version = (row.version + 1) if row is not None else 1
     report: dict[str, Any] = {}
+    ensure_disk_space(app.paths.renders, settings.min_free_disk_gb)
     if tl_data is None:
         ctx.progress(0.02, "Planning edit (reframing, captions, pacing)")
         override = {"deadzone": 0.03, "min_hold_s": 0.8} if ctx.payload.get("replan") else None
@@ -900,7 +943,7 @@ def short_metadata(ctx: JobContext) -> dict[str, Any]:
 
     with mm.gpu_session("metadata"):
         meta = generate_metadata(llm, transcript, video_title=video_title, channel=channel, candidate_title=cand_title,
-                                 mode=mode)
+                                 mode=mode, system=settings.prompts.metadata or None)
         if llm is not None and settings.llm.unload_after_use:
             llm.unload()
     ctx.progress(0.7, "Selecting cover frame")

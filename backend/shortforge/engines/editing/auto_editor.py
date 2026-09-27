@@ -13,13 +13,16 @@ from pathlib import Path
 from shortforge.core.config import AppSettings
 from shortforge.core.logging import get_logger
 from shortforge.engines.audio.analysis import plan_silence_cuts
+from shortforge.engines.audio.music import pick_track, snap_to_beats
 from shortforge.engines.captions.emphasis import select_emphasis, word_importance
+from shortforge.engines.editing.broll import match_broll
 from shortforge.engines.editing.timeline import (
     AudioSpec,
     CaptionTrack,
     CaptionWord,
     EditTimeline,
     EnhanceSpec,
+    MusicTrack,
     SafeArea,
     SourceRange,
     TextOverlay,
@@ -49,6 +52,8 @@ class ClipSpec:
     idf: dict[str, float] | None = None
     caption_preset: str | None = None
     reframe_mode: str | None = None
+    broll_clips: list = field(default_factory=list)
+    music_tracks: list = field(default_factory=list)
 
 
 def output_fps(source_fps: float, setting: str) -> float:
@@ -96,7 +101,8 @@ def build_timeline(spec: ClipSpec, settings: AppSettings, detector: FaceDetector
             continue
         if e is None or e <= s:
             e = s + max(0.05, min(w.end, spec.end) - max(w.start, spec.start))
-        cap_words.append(CaptionWord(text=w.clean, start=round(s, 3), end=round(min(e, tl.duration), 3), emphasis=emph))
+        cap_words.append(CaptionWord(text=w.clean, start=round(s, 3), end=round(min(e, tl.duration), 3), emphasis=emph,
+                                     src_start=round(w.start, 3), src_end=round(w.end, 3)))
     tl.captions = CaptionTrack(enabled=settings.captions.enabled,
                                preset=spec.caption_preset or settings.captions.preset, words=cap_words,
                                vertical_position=settings.captions.vertical_position)
@@ -128,4 +134,29 @@ def build_timeline(spec: ClipSpec, settings: AppSettings, detector: FaceDetector
     emphasis_times = sorted(t for _, t in strong[: max(1, int(tl.duration / 8))])
     tl.zooms = plan_punch_ins(tl, emphasis_times, rcfg, spec.source_height)
     report["punch_ins"] = len(tl.zooms)
+
+    # ---- B-roll matched to what is being said
+    if settings.broll.enabled and spec.broll_clips:
+        inserts = match_broll(tl.captions.words, spec.broll_clips, total=tl.duration,
+                              max_inserts=settings.broll.max_inserts, insert_duration=settings.broll.insert_duration)
+        if settings.broll.mode == "auto":
+            tl.broll = inserts
+        else:
+            tl.broll_suggestions = inserts
+        report["broll"] = {"mode": settings.broll.mode, "matches": len(inserts)}
+
+    # ---- optional music bed, ducked under speech, with punch-ins landing on beats
+    if settings.music.enabled and spec.music_tracks:
+        words_per_s = len(cap_words) / max(1.0, tl.duration)
+        track = pick_track(spec.music_tracks, tl.duration, clip_energy=min(1.0, words_per_s / 4.0),
+                           seed=int(spec.start * 10))
+        if track is not None:
+            offset = track.beats[0] if track.beats else 0.0
+            tl.music = MusicTrack(path=track.path, volume_db=settings.music.volume_db, duck_db=settings.music.duck_db,
+                                  offset=round(offset, 3))
+            starts = snap_to_beats([z.start for z in tl.zooms], track.beats, offset)
+            for z, s in zip(tl.zooms, starts, strict=False):
+                shift = s - z.start
+                z.start, z.end = round(s, 3), round(min(tl.duration, z.end + shift), 3)
+            report["music"] = {"track": Path(track.path).name, "tempo": track.tempo}
     return tl, report

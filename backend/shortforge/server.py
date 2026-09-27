@@ -45,6 +45,15 @@ def bootstrap() -> None:
     """Paths, logging, database and secrets (shared by the server and the CLI)."""
     paths = get_paths()
     setup_logging(paths.logs, os.environ.get("SHORTFORGE_LOG_LEVEL", "INFO"))
+    # Let an installed desktop shell (which does not live next to the repo) find this engine.
+    try:
+        import sys
+
+        from shortforge.core.paths import write_bootstrap
+
+        write_bootstrap({"engine_python": sys.executable, "engine_root": str(project_root())})
+    except OSError:
+        pass
     init_db(paths.database)
     secrets.configure_fallback(paths.root / ".secrets.json")
     with session_scope() as s:

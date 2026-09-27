@@ -61,6 +61,7 @@ class FinderConfig:
     final_count: int = 12
     duplicate_threshold: float = 0.8
     weights: dict[str, float] | None = None
+    ranker_prompt: str | None = None
 
 
 @dataclass
@@ -141,7 +142,8 @@ def find_clips(inp: FinderInputs, cfg: FinderConfig, *, llm: LLMProvider | None 
             report(0.1 + 0.5 * i / max(1, min(len(shortlist), cfg.llm_candidates)),
                    f"PASS 4 - semantic ranking ({i + 1}/{min(len(shortlist), cfg.llm_candidates)})")
             try:
-                c.llm = llm_ranker.evaluate(llm, c, inp.sentences, inp.video_title, inp.channel_name)
+                c.llm = llm_ranker.evaluate(llm, c, inp.sentences, inp.video_title, inp.channel_name,
+                                            cfg.ranker_prompt or None)
                 c.pass_reached = 4
             except JobCancelled:
                 raise

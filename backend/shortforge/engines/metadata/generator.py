@@ -104,7 +104,7 @@ def heuristic_metadata(transcript: str, video_title: str, candidate_title: str |
 
 
 def generate_metadata(llm: LLMProvider | None, transcript: str, *, video_title: str, channel: str | None,
-                      candidate_title: str | None, mode: str = "clean") -> ShortMetadata:
+                      candidate_title: str | None, mode: str = "clean", system: str | None = None) -> ShortMetadata:
     if llm is None:
         return heuristic_metadata(transcript, video_title, candidate_title, mode)
     user = (f'Original video: "{video_title}"' + (f" by {channel}" if channel else "") +
@@ -112,7 +112,7 @@ def generate_metadata(llm: LLMProvider | None, transcript: str, *, video_title: 
             "Return JSON with 3 alternative titles, a description, 3-6 hashtags, up to 8 keywords and up to 5 "
             "internal_tags (topic/category labels for organising).")
     try:
-        data = llm.chat_json(SYSTEM, user, schema=SCHEMA, max_tokens=500)
+        data = llm.chat_json(system or SYSTEM, user, schema=SCHEMA, max_tokens=500)
     except Exception as exc:
         log.warning("metadata LLM failed: %s", exc)
         return heuristic_metadata(transcript, video_title, candidate_title, mode)

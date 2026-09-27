@@ -99,7 +99,7 @@ def heuristic_timeline(sentences: list[Sentence], feats: list[SentenceFeatures],
 
 def llm_timeline(llm: LLMProvider, sentences: list[Sentence], video_title: str,
                  progress: Callable[[float, str], None] | None = None,
-                 feats: list[SentenceFeatures] | None = None) -> list[SemanticSegment]:
+                 feats: list[SentenceFeatures] | None = None, system: str | None = None) -> list[SemanticSegment]:
     chunks = chunk_sentences(sentences)
     out: list[SemanticSegment] = []
     for ci, (a, b) in enumerate(chunks):
@@ -111,7 +111,7 @@ def llm_timeline(llm: LLMProvider, sentences: list[Sentence], video_title: str,
             "Return JSON with 'segments' (from/to are sentence numbers, inclusive)."
         )
         try:
-            data = llm.chat_json(SYSTEM, user, schema=SCHEMA, max_tokens=700)
+            data = llm.chat_json(system or SYSTEM, user, schema=SCHEMA, max_tokens=700)
             segs = _validate(data.get("segments", []), a, b)
         except Exception as exc:  # one bad chunk must not kill the whole analysis
             log.warning("semantic labelling failed for chunk %d: %s", ci, exc)

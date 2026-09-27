@@ -99,6 +99,25 @@ def short_media(short_id: int, kind: str, request: Request, s: Session = Depends
     raise HTTPException(404, "Unknown media kind")
 
 
+@router.get("/media/candidate/{candidate_id}/frame")
+def candidate_frame(candidate_id: int, request: Request, s: Session = Depends(get_session)) -> Response:
+    """A representative frame from the middle of a candidate (cached JPEG from the proxy)."""
+    from shortforge.database.models import CandidateClip
+    from shortforge.engines.media.proxy import make_thumbnail
+
+    c = s.get(CandidateClip, candidate_id)
+    if c is None:
+        raise HTTPException(404, "Candidate not found")
+    v = s.get(Video, c.video_id)
+    out = get_context().paths.thumbnails / "candidates" / f"cand_{candidate_id}_{int(c.start * 10)}.jpg"
+    if not out.exists():
+        source = v.proxy_path or v.local_path if v else None
+        if not source or not Path(source).exists():
+            raise HTTPException(404, "No media for this candidate")
+        make_thumbnail(Path(source), out, at=c.start + min(3.0, c.duration / 3), width=480)
+    return ranged_file(request, out, "image/jpeg")
+
+
 @router.post("/media/reveal")
 def reveal(body: dict) -> dict:
     """Open the containing folder in Explorer (local desktop convenience)."""

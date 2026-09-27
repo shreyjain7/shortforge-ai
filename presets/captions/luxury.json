@@ -1,0 +1,19 @@
+{
+  "name": "Luxury",
+  "description": "Gold-on-black serif with generous spacing.",
+  "font_file": "DMSerifDisplay-Regular.ttf",
+  "font_name": "DM Serif Display",
+  "font_size": 82,
+  "uppercase": true,
+  "primary_color": "#F8F4E3",
+  "highlight_color": "#D4AF37",
+  "emphasis_color": "#D4AF37",
+  "outline_width": 3,
+  "outline_color": "#1A1408",
+  "shadow_alpha": 0.6,
+  "letter_spacing": 4,
+  "highlight_mode": "color",
+  "active_scale": 1.04,
+  "animation": "fade",
+  "max_words": 3
+}

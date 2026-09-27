@@ -1,0 +1,17 @@
+{
+  "name": "Modern",
+  "description": "Friendly rounded type with a lime highlight box.",
+  "font_file": "LilitaOne-Regular.ttf",
+  "font_name": "Lilita One",
+  "font_size": 100,
+  "uppercase": false,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#111111",
+  "emphasis_color": "#C6FF4D",
+  "outline_width": 6,
+  "highlight_mode": "box",
+  "highlight_box_color": "#C6FF4D",
+  "active_scale": 1.06,
+  "animation": "slide",
+  "max_words": 3
+}

@@ -1,0 +1,48 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / frontend
+node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+*.tsbuildinfo
+
+# Secrets, tokens, credentials, private config - NEVER commit
+.env
+.env.*
+!.env.example
+*.token
+*.token.json
+tokens/
+token*.json
+credentials/
+credentials*.json
+client_secret*.json
+.secrets.json
+config.local.*
+private/
+
+# Local data / media
+ShortForgeData/
+*.db
+*.db-shm
+*.db-wal
+dev-migrations.db
+*.mp4
+*.mkv
+*.webm
+*.wav
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

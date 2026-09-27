@@ -1,0 +1,22 @@
+{
+  "name": "Podcast",
+  "description": "Readable karaoke-style progression for long-form talk.",
+  "font_file": "Montserrat-ExtraBold.ttf",
+  "font_name": "Montserrat ExtraBold",
+  "font_size": 80,
+  "uppercase": false,
+  "primary_color": "#E8E8E8",
+  "highlight_color": "#FFFFFF",
+  "emphasis_color": "#7DD3FC",
+  "spoken_color": "#FFFFFF",
+  "outline_width": 5,
+  "highlight_mode": "karaoke",
+  "active_scale": 1.04,
+  "animation": "fade",
+  "max_words": 5,
+  "position": 0.72,
+  "speaker_colors": [
+    "#FFFFFF",
+    "#FDE68A"
+  ]
+}

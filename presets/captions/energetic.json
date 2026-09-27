@@ -1,0 +1,17 @@
+{
+  "name": "Energetic",
+  "description": "Punchy two-word bursts with a bouncing highlight.",
+  "font_file": "Poppins-Black.ttf",
+  "font_name": "Poppins Black",
+  "font_size": 104,
+  "uppercase": true,
+  "highlight_color": "#39FF88",
+  "emphasis_color": "#FF4D8D",
+  "outline_width": 8,
+  "shadow_depth": 5,
+  "highlight_mode": "color",
+  "active_scale": 1.16,
+  "animation": "bounce",
+  "max_words": 2,
+  "position": 0.64
+}

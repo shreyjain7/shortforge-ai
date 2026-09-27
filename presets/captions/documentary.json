@@ -1,0 +1,26 @@
+{
+  "name": "Documentary",
+  "description": "Elegant serif captions on a translucent box.",
+  "font_file": "DMSerifDisplay-Regular.ttf",
+  "font_name": "DM Serif Display",
+  "font_size": 74,
+  "uppercase": false,
+  "primary_color": "#F5F1E8",
+  "highlight_color": "#F5F1E8",
+  "emphasis_color": "#E9C46A",
+  "outline_width": 0,
+  "shadow_alpha": 0.3,
+  "highlight_mode": "none",
+  "active_scale": 1.0,
+  "animation": "fade",
+  "max_words": 6,
+  "position": 0.74,
+  "box": {
+    "enabled": true,
+    "color": "#000000",
+    "alpha": 0.5,
+    "padding_x": 26,
+    "padding_y": 12,
+    "radius": 10
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Neon",
+  "description": "Glowing outline colours for night-time energy.",
+  "font_file": "RussoOne-Regular.ttf",
+  "font_name": "Russo One",
+  "font_size": 96,
+  "uppercase": true,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#FFFFFF",
+  "emphasis_color": "#FFFFFF",
+  "outline_color": "#FF2BD6",
+  "outline_width": 5,
+  "shadow_color": "#00E5FF",
+  "shadow_alpha": 0.3,
+  "shadow_depth": 0,
+  "blur": 3.5,
+  "highlight_mode": "color",
+  "active_scale": 1.12,
+  "animation": "pop",
+  "max_words": 3
+}

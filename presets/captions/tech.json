@@ -1,0 +1,17 @@
+{
+  "name": "Tech",
+  "description": "Clean geometric type with a violet active-word box.",
+  "font_file": "Poppins-Bold.ttf",
+  "font_name": "Poppins",
+  "font_size": 86,
+  "uppercase": false,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#FFFFFF",
+  "emphasis_color": "#67E8F9",
+  "outline_width": 5,
+  "highlight_mode": "box",
+  "highlight_box_color": "#6D28D9",
+  "active_scale": 1.0,
+  "animation": "pop",
+  "max_words": 3
+}

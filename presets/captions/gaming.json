@@ -1,0 +1,19 @@
+{
+  "name": "Gaming",
+  "description": "Comic-style display type with hot colours.",
+  "font_file": "Bangers-Regular.ttf",
+  "font_name": "Bangers",
+  "font_size": 118,
+  "uppercase": true,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#FFD60A",
+  "emphasis_color": "#FF3B30",
+  "outline_width": 9,
+  "shadow_depth": 6,
+  "letter_spacing": 2,
+  "highlight_mode": "color",
+  "active_scale": 1.18,
+  "animation": "bounce",
+  "max_words": 2,
+  "position": 0.62
+}

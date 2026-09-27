@@ -1,0 +1,17 @@
+{
+  "name": "Bold",
+  "description": "Heavy uppercase words with a yellow active-word highlight.",
+  "font_file": "Montserrat-Black.ttf",
+  "font_name": "Montserrat Black",
+  "font_size": 98,
+  "uppercase": true,
+  "highlight_color": "#FFE14D",
+  "emphasis_color": "#FFE14D",
+  "outline_width": 7,
+  "shadow_alpha": 0.5,
+  "shadow_depth": 4,
+  "highlight_mode": "color",
+  "active_scale": 1.1,
+  "animation": "pop",
+  "max_words": 3
+}

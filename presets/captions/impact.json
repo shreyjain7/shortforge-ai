@@ -1,0 +1,18 @@
+{
+  "name": "Impact",
+  "description": "Tall condensed type, one or two words at a time.",
+  "font_file": "Anton-Regular.ttf",
+  "font_name": "Anton",
+  "font_size": 132,
+  "uppercase": true,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#FF3355",
+  "emphasis_color": "#FF3355",
+  "outline_width": 8,
+  "shadow_depth": 5,
+  "highlight_mode": "color",
+  "active_scale": 1.12,
+  "animation": "pop",
+  "max_words": 2,
+  "position": 0.63
+}

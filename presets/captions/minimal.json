@@ -1,0 +1,20 @@
+{
+  "name": "Minimal",
+  "description": "Understated sentence-case captions with a soft shadow.",
+  "font_file": "Poppins-SemiBold.ttf",
+  "font_name": "Poppins SemiBold",
+  "font_size": 72,
+  "uppercase": false,
+  "primary_color": "#FFFFFF",
+  "highlight_color": "#FFFFFF",
+  "emphasis_color": "#FFFFFF",
+  "outline_width": 0,
+  "shadow_alpha": 0.65,
+  "shadow_depth": 2,
+  "blur": 0,
+  "highlight_mode": "none",
+  "active_scale": 1.0,
+  "animation": "fade",
+  "max_words": 5,
+  "position": 0.72
+}

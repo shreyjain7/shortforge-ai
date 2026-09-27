@@ -1,0 +1,21 @@
+{
+  "name": "Cinematic",
+  "description": "Wide-tracked condensed titles low in frame.",
+  "font_file": "BebasNeue-Regular.ttf",
+  "font_name": "Bebas Neue",
+  "font_size": 108,
+  "uppercase": true,
+  "primary_color": "#F2F2F2",
+  "highlight_color": "#FFFFFF",
+  "emphasis_color": "#F4A261",
+  "outline_width": 2,
+  "shadow_alpha": 0.7,
+  "shadow_depth": 2,
+  "blur": 0.6,
+  "letter_spacing": 6,
+  "highlight_mode": "none",
+  "active_scale": 1.0,
+  "animation": "fade",
+  "max_words": 4,
+  "position": 0.76
+}
